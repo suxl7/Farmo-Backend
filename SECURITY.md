@@ -54,7 +54,7 @@ POST /api/auth/register/
 ```bash
 POST /api/auth/login/
 {
-  "email": "user@example.com",
+  "identifier": "....",
   "password": "SecurePass123!"
 }
 ```
