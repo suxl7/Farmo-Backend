@@ -142,7 +142,7 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
     ),
 }
-
+ 
 # JWT Settings
 from datetime import timedelta
 
