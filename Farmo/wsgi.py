@@ -1,5 +1,5 @@
 """
-WSGI config for Farmo project.
+WSGI(Web Server Gateway Interface) config for Farmo project.
 
 It exposes the WSGI callable as a module-level variable named ``application``.
 
