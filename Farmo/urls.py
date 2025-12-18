@@ -17,11 +17,12 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenRefreshView
-from backend.authentication import register, login, verify_wallet_pin
-
+from backend.service_frontend.authentication import login, verify_wallet_pin
+from backend.service_frontend.register import register, check_userid
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    #path('admin/', admin.site.urls),
     path('api/auth/register/', register, name='register'),
+    path('api/auth/check-userid/', check_userid, name='check_userid'),
     path('api/auth/login/', login, name='login'),
     path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin'),

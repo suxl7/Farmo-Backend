@@ -3,27 +3,8 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
-from .models import Users
-from .serializers import UsersSerializer
-
-
-@api_view(['POST'])
-@permission_classes([AllowAny])  # No authentication required for registration
-def register(request):
-    """Register new user and return JWT tokens"""
-    # Validate incoming user data
-    serializer = UsersSerializer(data=request.data)
-    if serializer.is_valid():
-        # Create new user in database
-        user = serializer.save()
-        # Generate JWT tokens for immediate login after registration
-        refresh = RefreshToken.for_user(user)
-        return Response({
-            'user': UsersSerializer(user).data,
-            'refresh': str(refresh),  # Long-lived token for getting new access tokens
-            'access': str(refresh.access_token),  # Short-lived token for API requests
-        }, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+from ..models import Users
+from ..serializers import UsersSerializer
 
 
 @api_view(['POST'])
@@ -74,7 +55,7 @@ def verify_wallet_pin(request):
         return Response({'error': 'Wallet ID and PIN required'}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        from .models import Wallet
+        from ..models import Wallet
         # Ensure wallet belongs to authenticated user (security check)
         wallet = Wallet.objects.get(wallet_id=wallet_id, user=request.user)
         # Verify hashed PIN matches
