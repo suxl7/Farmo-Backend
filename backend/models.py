@@ -32,6 +32,7 @@ class Users(models.Model):
 	user_id = models.CharField(max_length=20, primary_key=True)
 	phone = models.CharField(max_length=15, blank=True)
 	password = models.CharField(max_length=128)
+	profile_status = models.CharField(max_length=20, default='ACTIVE')
 	is_active = models.BooleanField()
 	is_admin = models.BooleanField()
 	profile_id = models.ForeignKey(UsersProfile, on_delete=models.PROTECT)
@@ -117,8 +118,8 @@ class ProductRating(models.Model):
 class FarmerRating(models.Model):
 	"""FarmerRating model for farmer reviews by consumers"""
 	R_id = models.CharField(max_length=50, primary_key=True)
-	Farmer_id = models.ForeignKey(Users, on_delete=models.PROTECT)
-	Consumer_id = models.ForeignKey(Users, on_delete=models.PROTECT)
+	Farmer_id = models.ForeignKey(Users, on_delete=models.PROTECT, related_name='Farmer')
+	Consumer_id = models.ForeignKey(Users, on_delete=models.PROTECT, related_name='Consumer')
 	score = models.IntegerField()
 	comment = models.TextField()
 	date = models.DateTimeField(default=timezone.now)

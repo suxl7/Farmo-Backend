@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from .models import (
-    Users, UsersProfile, UserContact, Wallet, Transaction, Product, ProductMedia,
+    Users, UsersProfile, Wallet, Transaction, Product, ProductMedia,
     ProductRating, FarmerRating, Verification, OrderRequest, OrdProdLink
 )
 
