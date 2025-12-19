@@ -8,6 +8,7 @@ from ..serializers import UsersSerializer
 from django.utils import timezone
 from datetime import timedelta
 import secrets
+from ..utils.update_last_activity import update_last_activity
 
 
 @api_view(['POST'])
@@ -24,33 +25,39 @@ def login(request):
     
     try:
         from django.db.models import Q
-        user = Users.objects.get(Q(user_id=identifier) | Q(phone=identifier))
+        user = Users.objects.get(Q(user_id=identifier) | Q(phone=identifier), is_admin=is_admin)
         
-        if user.is_admin != is_admin:
+        if not user.check_password(password):
             return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
         
-        if user.check_password(password):
-            token = secrets.token_urlsafe(32)
-            refresh_token = secrets.token_urlsafe(32)
-            issued_at = timezone.now()
-            expires_at = issued_at + timedelta(days=40)
-            
-            Tokens.objects.create(
-                user_id=user,
-                token=token,
-                device_info=device_info,
-                issued_at=issued_at,
-                expires_at=expires_at,
-                refresh_token=refresh_token
-            )
-            
-            return Response({
-                'user': UsersSerializer(user).data,
-                'token': token,
-                'refresh_token': refresh_token,
-            }, status=status.HTTP_200_OK)
+        if user.profile_status == 'PENDING':
+            return Response({'status': 'pending', 'message': 'Please activate your account'}, status=status.HTTP_403_FORBIDDEN)
         
-        return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+        if user.profile_status != 'ACTIVATED':
+            return Response({'error': 'Account not active'}, status=status.HTTP_403_FORBIDDEN)
+        
+        token = secrets.token_urlsafe(32)
+        refresh_token = secrets.token_urlsafe(32)
+        issued_at = timezone.now()
+        expires_at = issued_at + timedelta(days=40)
+        
+        Tokens.objects.create(
+            user_id=user,
+            token=token,
+            device_info=device_info,
+            issued_at=issued_at,
+            expires_at=expires_at,
+            refresh_token=refresh_token
+        )
+        
+        update_last_activity(user)
+        
+        return Response({
+            'user': UsersSerializer(user).data,
+            'token': token,
+            'refresh_token': refresh_token,
+        }, status=status.HTTP_200_OK)
+        
     except Users.DoesNotExist:
         return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 

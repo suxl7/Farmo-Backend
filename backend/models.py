@@ -32,7 +32,7 @@ class Users(models.Model):
 	user_id = models.CharField(max_length=20, primary_key=True)
 	phone = models.CharField(max_length=15, blank=True)
 	password = models.CharField(max_length=128)
-	profile_status = models.CharField(max_length=20, default='ACTIVE')
+	profile_status = models.CharField(max_length=20, default='ACTIVATED')
 	is_admin = models.BooleanField(default=False)
 	profile_id = models.ForeignKey(UsersProfile, on_delete=models.PROTECT)
 
@@ -194,8 +194,16 @@ class Tokens(models.Model):
 	device_info = models.CharField(max_length=255, blank=True, null=True)
 	issued_at = models.DateTimeField(default=timezone.now)
 	expires_at = models.DateTimeField()
-	last_activity = models.DateTimeField(default=timezone.now)
 	refresh_token = models.TextField(blank=True, null=True)
 
 	def __str__(self):
 		return f"Token for {self.user_id}"
+
+
+class UserActivity(models.Model):
+	"""User activity tracking for online status"""
+	user_id = models.OneToOneField(Users, on_delete=models.CASCADE, primary_key=True)
+	last_activity = models.DateTimeField(default=timezone.now)
+
+	def __str__(self):
+		return f"Activity for {self.user_id}"
