@@ -3,44 +3,94 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
-from ..models import Users
+from ..models import Users, Tokens
 from ..serializers import UsersSerializer
+from django.utils import timezone
+from datetime import timedelta
+import secrets
 
 
 @api_view(['POST'])
-@permission_classes([AllowAny])  # No authentication required for login
+@permission_classes([AllowAny])
 def login(request):
-    """Login with user_id/phone/email and password, returns JWT tokens"""
-    # Get login credentials from request
-    identifier = request.data.get('identifier')  # Can be user_id, phone, or email
+    """Login with identifier and password, returns tokens"""
+    identifier = request.data.get('identifier')
     password = request.data.get('password')
+    is_admin = request.data.get('is_admin', False)
+    device_info = request.data.get('device_info', '')
     
-    # Validate required fields
     if not identifier or not password:
         return Response({'error': 'Identifier and password required'}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
         from django.db.models import Q
-        # Find user by user_id, phone, or email using OR query
-        user = Users.objects.get(Q(user_id=identifier) | Q(phone=identifier) | Q(email=identifier))
+        user = Users.objects.get(Q(user_id=identifier) | Q(phone=identifier))
         
-        # Verify password from Credentials model (not Users model)
-        if hasattr(user, 'credentials') and user.credentials.password:
-            # Check hashed password matches
-            if user.credentials.check_password(password):
-                # Generate JWT tokens on successful authentication
-                refresh = RefreshToken.for_user(user)
-                return Response({
-                    'user': UsersSerializer(user).data,
-                    'refresh': str(refresh),  # For refreshing access tokens
-                    'access': str(refresh.access_token),  # For API authentication
-                }, status=status.HTTP_200_OK)
+        if user.is_admin != is_admin:
+            return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
         
-        # Password verification failed
+        if user.check_password(password):
+            token = secrets.token_urlsafe(32)
+            refresh_token = secrets.token_urlsafe(32)
+            issued_at = timezone.now()
+            expires_at = issued_at + timedelta(days=40)
+            
+            Tokens.objects.create(
+                user_id=user,
+                token=token,
+                device_info=device_info,
+                issued_at=issued_at,
+                expires_at=expires_at,
+                refresh_token=refresh_token
+            )
+            
+            return Response({
+                'user': UsersSerializer(user).data,
+                'token': token,
+                'refresh_token': refresh_token,
+            }, status=status.HTTP_200_OK)
+        
         return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
     except Users.DoesNotExist:
-        # User not found - return same error for security
         return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def refresh_token_view(request):
+    """Refresh expired token using refresh_token"""
+    user_id = request.data.get('user_id')
+    token = request.data.get('token')
+    refresh_token = request.data.get('refresh_token')
+    device_info = request.data.get('device_info', '')
+    
+    if not user_id or not token or not refresh_token:
+        return Response({'error': 'user_id, token and refresh_token required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        token_obj = Tokens.objects.get(user_id__user_id=user_id, token=token, refresh_token=refresh_token)
+        
+        if token_obj.expires_at > timezone.now():
+            return Response({'message': 'Token still valid', 'token': token, 'refresh_token': refresh_token}, status=status.HTTP_200_OK)
+        
+        new_token = secrets.token_urlsafe(32)
+        new_refresh_token = secrets.token_urlsafe(32)
+        new_expires_at = timezone.now() + timedelta(days=40)
+        
+        token_obj.token = new_token
+        token_obj.refresh_token = new_refresh_token
+        token_obj.expires_at = new_expires_at
+        token_obj.issued_at = timezone.now()
+        token_obj.device_info = device_info
+        token_obj.save()
+        
+        return Response({
+            'token': new_token,
+            'refresh_token': new_refresh_token,
+        }, status=status.HTTP_200_OK)
+        
+    except Tokens.DoesNotExist:
+        return Response({'error': 'Invalid token or refresh_token'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 @api_view(['POST'])  # Requires JWT authentication (default)

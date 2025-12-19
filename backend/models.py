@@ -186,3 +186,16 @@ class Transaction(models.Model):
 
 	def __str__(self):
 		return f"Transaction {self.transaction_id}: {self.amount}"
+
+
+class Tokens(models.Model):
+	"""Tokens model for JWT token management"""
+	user_id = models.ForeignKey(Users, on_delete=models.CASCADE)
+	token = models.TextField()
+	device_info = models.CharField(max_length=255, blank=True, null=True)
+	issued_at = models.DateTimeField(default=timezone.now)
+	expires_at = models.DateTimeField()
+	refresh_token = models.TextField(blank=True, null=True)
+
+	def __str__(self):
+		return f"Token for {self.user_id}"
