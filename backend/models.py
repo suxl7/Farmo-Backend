@@ -33,7 +33,6 @@ class Users(models.Model):
 	phone = models.CharField(max_length=15, blank=True)
 	password = models.CharField(max_length=128)
 	profile_status = models.CharField(max_length=20, default='ACTIVE')
-	is_active = models.BooleanField(default=True)
 	is_admin = models.BooleanField(default=False)
 	profile_id = models.ForeignKey(UsersProfile, on_delete=models.PROTECT)
 
@@ -195,6 +194,7 @@ class Tokens(models.Model):
 	device_info = models.CharField(max_length=255, blank=True, null=True)
 	issued_at = models.DateTimeField(default=timezone.now)
 	expires_at = models.DateTimeField()
+	last_activity = models.DateTimeField(default=timezone.now)
 	refresh_token = models.TextField(blank=True, null=True)
 
 	def __str__(self):

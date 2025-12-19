@@ -15,6 +15,7 @@ class UsersSerializer(serializers.ModelSerializer):
         fields = '__all__'
     
     def create(self, validated_data):
+        # Extract password from validated_data to handle hashing separately
         password = validated_data.pop('password', None)
         user = Users.objects.create(**validated_data)
         if password:
