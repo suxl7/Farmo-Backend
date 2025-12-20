@@ -7,6 +7,7 @@ from django.contrib.auth.hashers import make_password, check_password
 class UsersProfile(models.Model):
 	"""User profile storing detailed user information"""
 	profile_id = models.CharField(max_length=20, primary_key=True)
+	profile_url = models.CharField(max_length=255, blank=True, null=True)
 	f_name = models.CharField(max_length=50)
 	m_name = models.CharField(max_length=50, blank=True, null=True)
 	l_name = models.CharField(max_length=50)
