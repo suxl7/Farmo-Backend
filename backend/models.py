@@ -94,6 +94,7 @@ class Product(models.Model):
 	cost_per_unit = models.DecimalField(max_digits=10, decimal_places=2)
 	produced_date = models.DateField()
 	registered_date = models.DateTimeField(default=timezone.now)
+	expiry_Date = models.DateField(null=True, blank=True)
 	description = models.TextField(blank=True, null=True)
 	delivery_option = models.CharField(max_length=100, default='not-available')
 	product_status = models.CharField(max_length=100, default='AVAILABLE')

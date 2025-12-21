@@ -92,8 +92,9 @@ def refresh_token_view(request):
         token_obj.save()
         
         return Response({
+            'user_id': user_id,
             'token': new_token,
-            'refresh_token': new_refresh_token,
+            'refresh_token': new_refresh_token
         }, status=status.HTTP_200_OK)
         
     except Tokens.DoesNotExist:

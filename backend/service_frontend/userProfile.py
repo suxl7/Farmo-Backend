@@ -1,5 +1,5 @@
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from backend.serializers import UsersSerializer
 from rest_framework.response import Response
 from rest_framework import status
@@ -129,3 +129,55 @@ def user_online_status(request):
     except Users.DoesNotExist:
         return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def verification(request):
+    """Verify user identity"""
+    user_id = request.data.get('user_id')
+    id_type = request.data.get('id_type')
+    id_number = request.data.get('id_number')
+    id_front = request.FILES.get('id_front')
+    id_back = request.FILES.get('id_back')
+    selfie_with_id = request.FILES.get('selfie_with_id')
+
+    if not all([user_id, id_type, id_number, id_front, id_back, selfie_with_id]):
+        return Response({'error': 'All verification fields are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not Users.objects.filter(user_id=user_id).exists():
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    verification_id = f"V{secrets.token_hex(8).upper()}"
+    
+    # Save uploaded files
+    upload_dir = os.path.join(settings.MEDIA_ROOT, 'verification')
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    file_ext = os.path.splitext(id_front.name)[1]
+    file_name = f"{verification_id}_front{file_ext}"
+    file_path = os.path.join(upload_dir, file_name)
+    
+    with open(file_path, 'wb+') as destination:
+        for chunk in id_front.chunks():
+            destination.write(chunk)
+    
+    front_url = f"{settings.MEDIA_URL}verification/{file_name}"
+    
+    file_ext = os.path.splitext(id_back.name)[1]
+    file_name = f"{verification_id}_back{file_ext}"
+    file_path = os.path.join(upload_dir, file_name)
+    
+    with open(file_path, 'wb+') as destination:
+        for chunk in id_back.chunks():
+            destination.write(chunk)
+    
+    back_url = f"{settings.MEDIA_URL}verification/{file_name}"
+    
+    file_ext = os.path.splitext(selfie_with_id.name)[1]
+    file_name = f"{verification_id}_selfie{file_ext}"
+    file_path = os.path.join(upload_dir, file_name)
+    
+    with open(file_path, 'wb+') as destination:
+        for chunk in selfie_with_id.chunks():
+            destination.write(chunk)
+    
+    selfie_url = f"{settings.MEDIA_URL}verification/{file_name}"
