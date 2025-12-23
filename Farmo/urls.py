@@ -19,7 +19,7 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework_simplejwt.views import TokenRefreshView
-from backend.service_frontend.authentication import login, verify_wallet_pin, refresh_token_view
+from backend.service_frontend.authentication import login, verify_wallet_pin, login_with_token
 from backend.service_frontend.userProfile import register, check_userid, user_online_status
 
 urlpatterns = [
@@ -27,7 +27,7 @@ urlpatterns = [
     path('api/auth/register/', register, name='register'),
     path('api/auth/check-userid/', check_userid, name='check_userid'),
     path('api/auth/login/', login, name='login'),
-    path('api/auth/refresh-token/', refresh_token_view, name='refresh_token'),
+    path('api/auth/login-with-token/', login_with_token, name='login_with_token'),
     path('api/user/online-status/', user_online_status, name='user_online_status'),
     path('api/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin')
 ]

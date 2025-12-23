@@ -6,6 +6,7 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from backend.models import Users, UsersProfile
 import secrets
+from django.utils import timezone
 import os
 from django.conf import settings
 from backend.utils.update_last_activity import get_online_status
@@ -16,7 +17,7 @@ def check_userid(request):
     """Check if userID is available during registration"""
     user_id = request.GET.get('user_id')
     if not user_id:
-        return Response({'error': 'user_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'status': 1}, status=status.HTTP_400_BAD_REQUEST)
     
     """Check existence of user_id in Users model [exists is boolean]"""
     exists = Users.objects.filter(user_id=user_id).exists()
@@ -29,36 +30,64 @@ def register(request):
     """Register new user with profile"""
     user_id = request.data.get('user_id')
     password = request.data.get('password')
-    f_name = request.data.get('f_name')
-    m_name = request.data.get('m_name')
+    f_name = request.data.get('f_name') # required
+    m_name = request.data.get('m_name', None) # optional
     l_name = request.data.get('l_name')
     province = request.data.get('province')
     district = request.data.get('district')
+    municipal = request.data.get('municipal')
     ward = request.data.get('ward')
     tole = request.data.get('tole')
     phone = request.data.get('phone')
-    phone02 = request.data.get('phone2')
-    email = request.data.get('email')
-    whatsapp = request.data.get('whatsapp')
-    facebook = request.data.get('facebook')
-    about = request.data.get('about')
+    phone02 = request.data.get('phone2', None)
+    email = request.data.get('email', None)
+    whatsapp = request.data.get('whatsapp', None)
+    facebook = request.data.get('facebook', None)
+    about = request.data.get('about', None)
     sex = request.data.get('sex')
     dob = request.data.get('dob')
     user_type = request.data.get('user_type')
     created_by = request.data.get('created_by')
-    profile_picture = request.FILES.get('profile_picture')
+    profile_picture = request.FILES.get('profile_picture', None)
 
-    if user_type.lower() != "admin":
+    join_date = timezone.now()
+
+
+    if not all([user_id, password, f_name, l_name, user_type, phone, province, district, municipal, ward, tole, dob, sex, is_admin]):
+        return Response({
+            'registration_success': False,
+            'error_code': 'MISSING_REQUIRED_FIELDS'
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if Users.objects.filter(user_id=user_id).exists():
+        return Response({
+            'registration_success': False,
+            'error_code': 'USERID_EXISTS'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if user_type == 'SuperAdmin' and created_by == 'Admin':
+        return Response({
+            'registration_success': False,
+            'error_code': 'INSUFFICIENT_PRIVILEGES'}, status=status.HTTP_403_FORBIDDEN)
+    
+    if user_type not in ['SuperAdmin', 'Admin']:
         is_admin = False
     else:
         is_admin = True
-        user_type = None
-    
-    if not all([user_id, password, f_name, l_name, user_type]):
-        return Response({'error': 'Required fields: user_id, password, f_name, l_name, user_type'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    if Users.objects.filter(user_id=user_id).exists():
-        return Response({'error': 'User ID already exists'}, status=status.HTTP_400_BAD_REQUEST)
+
+    '''
+    A user can able to create total 3 accounts with one phone number but must have 1 active account at a time.
+    Check if phone number already exists ACTIVE or PENDING status in Users model. If exists, return error.
+    '''
+    if Users.objects.filter(phone=phone).count() >= 3:
+        return Response({
+            'registration_success': False,
+            'error_code': 'PHONE_NUMBER_ACCOUNT_LIMIT_REACHED'}, status=status.HTTP_400_BAD_REQUEST)
+
+    active_user_count = Users.objects.filter(phone=phone, profile_status__in=['ACTIVE', 'PENDING']).count()
+    if active_user_count >= 1:
+        return Response({
+            'registration_success': False,
+            'error_code': 'PHONE_EXISTS_ACTIVE_ACCOUNT'}, status=status.HTTP_400_BAD_REQUEST)
     
     profile_id = f"P{secrets.token_hex(8).upper()}"
     profile_picture_url = None
@@ -85,18 +114,23 @@ def register(request):
         user_type=user_type,
         province=province,
         district=district,
+        municipal=municipal,
         ward=ward,
-        tole=tole or None,
+        tole=tole,
         dob=dob,
         sex=sex,
         phone02=phone02 or None,
         email=email or None,
         facebook=facebook or None,
         whatsapp=whatsapp or None,
-        about=about or None
+        about=about or None,
+        join_date=join_date
     )
-    
-    profile_status = 'PENDING' if created_by else 'ACTIVATED'
+
+    if created_by == 'Admin' and created_by == 'SuperAdmin':
+        profile_status = 'PENDING'
+    else:
+        profile_status = 'ACTIVE'
     
     user = Users.objects.create(
         user_id=user_id,
@@ -109,9 +143,10 @@ def register(request):
     user.save()
     
     return Response({
-        'message': 'User registered successfully',
-        'is_user_registered': True
+        'registration_success': True
     }, status=status.HTTP_201_CREATED)
+
+
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -128,6 +163,10 @@ def user_online_status(request):
         return Response({'user_id': user_id, 'status': online_status})
     except Users.DoesNotExist:
         return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])

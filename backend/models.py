@@ -14,6 +14,7 @@ class UsersProfile(models.Model):
 	user_type = models.CharField(max_length=50)
 	province = models.CharField(max_length=50, blank=True, null=True)
 	district = models.CharField(max_length=50, blank=True, null=True)
+	municipal = models.CharField(max_length=50, blank=True, null=True)
 	ward = models.CharField(max_length=50, blank=True, null=True)
 	tole = models.CharField(max_length=100, blank=True, null=True)
 	dob = models.DateField(blank=True, null=True)
@@ -197,6 +198,7 @@ class Tokens(models.Model):
 	issued_at = models.DateTimeField(default=timezone.now)
 	expires_at = models.DateTimeField()
 	refresh_token = models.TextField(blank=True, null=True)
+	token_status = models.CharField(max_length=20, default='ACTIVE')
 
 	def __str__(self):
 		return f"Token for {self.user_id}"
