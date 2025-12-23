@@ -149,6 +149,9 @@ def login_with_token(request):
             # According to doc: Second time login returns no new tokens
             return Response({
                 'login_access': True,
+                'token' : None,
+                'refresh_token': None,
+                'user_id': None
             }, status=status.HTTP_200_OK)
         
     except Tokens.DoesNotExist:
