@@ -206,7 +206,7 @@ class Tokens(models.Model):
 
 class UserActivity(models.Model):
     """Track main user activities """
-    history_id = models.AutoField(primary_key=True)
+    #activity_id = models.AutoField(primary_key=True)
     user_id = models.ForeignKey(Users, on_delete=models.CASCADE)
     activity_type = models.CharField(max_length=50, blank=True, null=True)   # e.g. LOGIN, LOGOUT, PRODUCT_UPLOAD, ORDER_PLACED
     description = models.TextField(blank=True, null=True)  # optional details
@@ -214,3 +214,17 @@ class UserActivity(models.Model):
 
     def __str__(self):
         return f"{self.user_id} - {self.activity_type} at {self.timestamp}"
+	
+class Connections(models.Model):
+    """Track user-to-user connections (mutual or pending)"""
+    connection_id = models.AutoField(primary_key=True)
+    user = models.ForeignKey(Users, on_delete=models.CASCADE, related_name="connections")
+    target_user = models.ForeignKey(Users, on_delete=models.CASCADE, related_name="connected_to")
+    status = models.CharField(max_length=20, default="PENDING")  # PENDING, ACCEPTED, BLOCKED
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("user", "target_user")
+
+    def __str__(self):
+        return f"{self.user.user_id} -> {self.target_user.user_id} ({self.status})"

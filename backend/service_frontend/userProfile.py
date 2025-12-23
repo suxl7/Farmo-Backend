@@ -9,8 +9,9 @@ import secrets
 from django.utils import timezone
 import os
 from django.conf import settings
-from backend.service_frontend.update_last_activity import get_online_status
-
+#from backend.service_frontend.servicesActivity import get_online_status
+from backend.utils.file_manager import FileManager
+from backend.utils.update_activity import update_activity
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def check_userid(request):
@@ -53,7 +54,7 @@ def register(request):
     join_date = timezone.now()
 
 
-    if not all([user_id, password, f_name, l_name, user_type, phone, province, district, municipal, ward, tole, dob, sex, is_admin]):
+    if not all([user_id, password, f_name, l_name, user_type, phone, province, district, municipal, ward, tole, dob, sex]):
         return Response({
             'registration_success': False,
             'error_code': 'MISSING_REQUIRED_FIELDS'
@@ -90,20 +91,24 @@ def register(request):
             'error_code': 'PHONE_EXISTS_ACTIVE_ACCOUNT'}, status=status.HTTP_400_BAD_REQUEST)
     
     profile_id = f"P{secrets.token_hex(8).upper()}"
-    profile_picture_url = None
     
+    file_manager = FileManager(user_id)
+    
+    profile_picture_url = None
     if profile_picture:
-        upload_dir = os.path.join(settings.MEDIA_ROOT, 'profiles')
-        os.makedirs(upload_dir, exist_ok=True)
-        file_ext = os.path.splitext(profile_picture.name)[1]
-        file_name = f"{profile_id}{file_ext}"
-        file_path = os.path.join(upload_dir, file_name)
+        result = file_manager.save_profile_file(
+            file=profile_picture,
+            file_purpose='profile-pic',
+            max_size_mb=5
+        )
         
-        with open(file_path, 'wb+') as destination:
-            for chunk in profile_picture.chunks():
-                destination.write(chunk)
+        if not result['success']:
+            return Response({
+                'registration_success': False,
+                'error_code': 'PROFILE_PICTURE_UPLOAD_FAILED'
+            }, status=status.HTTP_400_BAD_REQUEST)
         
-        profile_picture_url = f"{settings.MEDIA_URL}profiles/{file_name}"
+        profile_picture_url = result['file_url']
     
     profile = UsersProfile.objects.create(
         profile_id=profile_id,
@@ -127,7 +132,7 @@ def register(request):
         join_date=join_date
     )
 
-    if created_by == 'Admin' and created_by == 'SuperAdmin':
+    if created_by in ['Admin', 'SuperAdmin']:
         profile_status = 'PENDING'
     else:
         profile_status = 'ACTIVE'
@@ -147,76 +152,105 @@ def register(request):
     }, status=status.HTTP_201_CREATED)
 
 
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def user_online_status(request):
-    """Get user online status"""
-    user_id = request.GET.get('user_id')
-    
-    if not user_id:
-        return Response({'error': 'user_id parameter required'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    try:
-        user = Users.objects.get(user_id=user_id)
-        online_status = get_online_status(user)
-        return Response({'user_id': user_id, 'status': online_status})
-    except Users.DoesNotExist:
-        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-
-
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def verification(request):
-    """Verify user identity"""
+def verification_request(request):
     user_id = request.data.get('user_id')
-    id_type = request.data.get('id_type')
-    id_number = request.data.get('id_number')
     id_front = request.FILES.get('id_front')
     id_back = request.FILES.get('id_back')
     selfie_with_id = request.FILES.get('selfie_with_id')
+    
+    # Initialize FileManager
+    file_manager = FileManager(user_id)
+    
+    # Save front document
+    front_result = file_manager.save_profile_file(
+        file=id_front,
+        file_purpose='verification-doc-front',
+        allowed_extensions=['.jpg', '.jpeg', '.png', '.pdf'],
+        max_size_mb=5
+    )
+    
+    if not front_result['success']:
+        return Response({
+            'verification_success': False,
+            'error': front_result['error']
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Save back document
+    back_result = file_manager.save_profile_file(
+        file=id_back,
+        file_purpose='verification-doc-back',
+        allowed_extensions=['.jpg', '.jpeg', '.png', '.pdf'],
+        max_size_mb=5
+    )
+    
+    if not back_result['success']:
+        # Clean up front file
+        file_manager.delete_file('profile', front_result['file_name'])
+        return Response({
+            'verification_success': False,
+            'error': back_result['error']
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Save selfie
+    selfie_result = file_manager.save_profile_file(
+        file=selfie_with_id,
+        file_purpose='selfie-with-id',
+        max_size_mb=5
+    )
+    
+    if not selfie_result['success']:
+        file_manager.delete_file('profile', front_result['file_name'])
+        file_manager.delete_file('profile', back_result['file_name'])
+        return Response({
+            'verification_success': False,
+            'error': selfie_result['error']
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # TODO: Save to Verification model
+    
+    return Response({
+        'verification_success': True,
+        'verification_id': f"V{secrets.token_hex(8).upper()}",
+        'documents': {
+            'front': front_result['file_url'],
+            'back': back_result['file_url'],
+            'selfie': selfie_result['file_url']
+        }
+    }, status=status.HTTP_201_CREATED)
 
-    if not all([user_id, id_type, id_number, id_front, id_back, selfie_with_id]):
-        return Response({'error': 'All verification fields are required'}, status=status.HTTP_400_BAD_REQUEST)
 
-    if not Users.objects.filter(user_id=user_id).exists():
-        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_profile_picture(request):
+    user_id = request.user.user_id
+    new_picture = request.FILES.get('profile_picture')
+    
+    # Initialize FileManager
+    file_manager = FileManager(user_id)
+    
+    # Save new picture (will replace old one)
+    result = file_manager.save_profile_file(
+        file=new_picture,
+        file_purpose='profile-pic',
+        max_size_mb=5
+    )
+    
+    if not result['success']:
+        return Response({
+            'success': False,
+            'error': result['error']
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Update database
+    profile = UsersProfile.objects.get(user_id=user_id)
+    profile.profile_url = result['file_url']
+    profile.save()
+    
+    update_activity(request.user, activity="UPDATE_PROFILE_PIC", discription="")
 
-    verification_id = f"V{secrets.token_hex(8).upper()}"
-    
-    # Save uploaded files
-    upload_dir = os.path.join(settings.MEDIA_ROOT, 'verification')
-    os.makedirs(upload_dir, exist_ok=True)
-    
-    file_ext = os.path.splitext(id_front.name)[1]
-    file_name = f"{verification_id}_front{file_ext}"
-    file_path = os.path.join(upload_dir, file_name)
-    
-    with open(file_path, 'wb+') as destination:
-        for chunk in id_front.chunks():
-            destination.write(chunk)
-    
-    front_url = f"{settings.MEDIA_URL}verification/{file_name}"
-    
-    file_ext = os.path.splitext(id_back.name)[1]
-    file_name = f"{verification_id}_back{file_ext}"
-    file_path = os.path.join(upload_dir, file_name)
-    
-    with open(file_path, 'wb+') as destination:
-        for chunk in id_back.chunks():
-            destination.write(chunk)
-    
-    back_url = f"{settings.MEDIA_URL}verification/{file_name}"
-    
-    file_ext = os.path.splitext(selfie_with_id.name)[1]
-    file_name = f"{verification_id}_selfie{file_ext}"
-    file_path = os.path.join(upload_dir, file_name)
-    
-    with open(file_path, 'wb+') as destination:
-        for chunk in selfie_with_id.chunks():
-            destination.write(chunk)
-    
-    selfie_url = f"{settings.MEDIA_URL}verification/{file_name}"
+    return Response({
+        'success': True,
+        'profile_picture_url': result['file_url']
+    }, status=status.HTTP_200_OK)

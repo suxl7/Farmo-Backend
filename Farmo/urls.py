@@ -14,13 +14,14 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
-from django.contrib import admin
+#from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from rest_framework_simplejwt.views import TokenRefreshView
 from backend.service_frontend.authentication import login, verify_wallet_pin, login_with_token
-from backend.service_frontend.userProfile import register, check_userid, user_online_status
+from backend.service_frontend.servicesActivity import get_online_status, check_userid
+from backend.service_frontend.userProfile import register, verification_request, update_profile_picture
+
 
 urlpatterns = [
     #path('admin/', admin.site.urls),
@@ -28,7 +29,9 @@ urlpatterns = [
     path('api/auth/check-userid/', check_userid, name='check_userid'),
     path('api/auth/login/', login, name='login'),
     path('api/auth/login-with-token/', login_with_token, name='login_with_token'),
-    path('api/user/online-status/', user_online_status, name='user_online_status'),
+    path('api/user/update-profile-picture/', update_profile_picture, name='update_profile_picture'),
+    path('api/user/verification-request/', verification_request, name='verification_request'),
+    path('api/user/online-status/', get_online_status, name='get_online_status'),
     path('api/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin')
 ]
 

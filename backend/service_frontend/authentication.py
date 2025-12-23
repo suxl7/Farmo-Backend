@@ -9,7 +9,7 @@ from django.utils import timezone
 from datetime import timedelta
 from django.db.models import Q
 import secrets
-from .update_last_activity import update_last_activity
+from backend.utils.update_activity import update_activity
 
 
 # Helper function to manage tokens [check, generate, save, deactivate old if needed]
@@ -94,7 +94,7 @@ def login(request):
         refresh_token = token_obj.refresh_token
         
         # Update last activity
-        update_last_activity(user, token)
+        update_activity(user, activity="LOGIN", discription="")
         
         # Return response according to documentation
         return Response({
@@ -165,7 +165,7 @@ def login_with_token(request):
             new_token = new_token_obj.token
             new_refresh_token = new_token_obj.refresh_token
             
-            update_last_activity(user, new_token)
+            update_activity(user, activity="LOGIN", discription="")
             
             # Return new tokens
             return Response({
@@ -177,7 +177,7 @@ def login_with_token(request):
         
         else:
             # Token still valid - just grant access
-            update_last_activity(user, token)
+            update_activity(user, activity="LOGIN", discription="")
             
             # According to doc: Second time login returns no new tokens
             return Response({
