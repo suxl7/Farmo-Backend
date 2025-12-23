@@ -15,10 +15,8 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='UserActivity',
             fields=[
-                ('user_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='backend.users')),
-                ('actvity_type', models.CharField(max_length=50, blank=True, null=True)),
-                ('description', models.TextField(blank=True, null=True)), # optional details
-                ('timestamp', models.DateTimeField(default=django.utils.timezone.now))
+                ('user_id', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, primary_key=True, serialize=False, to='backend.users')),
+                ('last_activity', models.DateTimeField(default=django.utils.timezone.now)),
             ],
         ),
         migrations.RemoveField(
