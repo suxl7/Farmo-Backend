@@ -9,7 +9,40 @@ from django.utils import timezone
 from datetime import timedelta
 from django.db.models import Q
 import secrets
-from ..utils.update_last_activity import update_last_activity
+from .update_last_activity import update_last_activity
+
+
+# Helper function to manage tokens [check, generate, save, deactivate old if needed]
+def check_generate_save_new_token(user, device_info):
+    # Step 1: Get all active tokens for this user
+    active_tokens = Tokens.objects.filter(
+        user_id=user,
+        token_status="ACTIVE"
+    ).order_by("issued_at")  # oldest first
+
+    # Step 2: If already 2 active tokens, deactivate the oldest one
+    # if active tokens are less than 2 then do nothing
+    if active_tokens.count() >= 2:
+        oldest_token = active_tokens.first()
+        oldest_token.token_status = "INACTIVE"
+        oldest_token.save(update_fields=["token_status"])
+    
+    if user.is_admin:
+        expiration_delta = timedelta(hours=12)  # Admin tokens valid for 12 hours
+    else:
+        expiration_delta = timedelta(days=40)
+    
+    # Step 3: Create the new token
+    new_token = Tokens.objects.create(
+        user_id=user,
+        token=secrets.token_urlsafe(32),
+        refresh_token=secrets.token_urlsafe(32),
+        device_info=device_info,
+        issued_at=timezone.now(),
+        expires_at=timezone.now() + expiration_delta,  # example expiry
+        token_status="ACTIVE"
+    )
+    return new_token
 
 
 @api_view(['POST'])
@@ -56,12 +89,12 @@ def login(request):
             }, status=status.HTTP_403_FORBIDDEN)
         
         # Generate tokens and manage active tokens
-        token_obj = check_and_generate_tokens(user, device_info)
+        token_obj = check_generate_save_new_token(user, device_info)
         token = token_obj.token
         refresh_token = token_obj.refresh_token
         
         # Update last activity
-        update_last_activity(user)
+        update_last_activity(user, token)
         
         # Return response according to documentation
         return Response({
@@ -127,12 +160,12 @@ def login_with_token(request):
         current_time = timezone.now()
         
         if current_time > token_entry.expires_at:
-            # Token expired - generate new tokens using refresh_token
-            new_token_obj = check_and_generate_tokens(user, device_info)
+            # Token expired but present - generate new tokens using refresh_token
+            new_token_obj = check_generate_save_new_token(user, device_info) 
             new_token = new_token_obj.token
             new_refresh_token = new_token_obj.refresh_token
             
-            update_last_activity(user)
+            update_last_activity(user, new_token)
             
             # Return new tokens
             return Response({
@@ -144,14 +177,14 @@ def login_with_token(request):
         
         else:
             # Token still valid - just grant access
-            update_last_activity(user)
+            update_last_activity(user, token)
             
             # According to doc: Second time login returns no new tokens
             return Response({
                 'login_access': True,
-                'token' : None,
-                'refresh_token': None,
-                'user_id': None
+                'token' : token,
+                'refresh_token': refresh_token,
+                'user_id': user.user_id
             }, status=status.HTTP_200_OK)
         
     except Tokens.DoesNotExist:
@@ -186,35 +219,3 @@ def verify_wallet_pin(request):
         # Wallet not found or doesn't belong to user
         return Response({'error': 'Wallet not found'}, status=status.HTTP_404_NOT_FOUND)
 
-
-
-def check_and_generate_tokens(user, device_info):
-    # Step 1: Get all active tokens for this user
-    active_tokens = Tokens.objects.filter(
-        user_id=user,
-        token_status="ACTIVE"
-    ).order_by("issued_at")  # oldest first
-
-    # Step 2: If already 2 active tokens, deactivate the oldest one
-    # if active tokens are less than 2 then do nothing
-    if active_tokens.count() >= 2:
-        oldest_token = active_tokens.first()
-        oldest_token.token_status = "INACTIVE"
-        oldest_token.save(update_fields=["token_status"])
-    
-    if user.is_admin:
-        expiration_delta = timedelta(hours=12)  # Admin tokens valid for 12 hours
-    else:
-        expiration_delta = timedelta(days=40)
-    
-    # Step 3: Create the new token
-    new_token = Tokens.objects.create(
-        user_id=user,
-        token=secrets.token_urlsafe(32),
-        refresh_token=secrets.token_urlsafe(32),
-        device_info=device_info,
-        issued_at=timezone.now(),
-        expires_at=timezone.now() + expiration_delta,  # example expiry
-        token_status="ACTIVE"
-    )
-    return new_token

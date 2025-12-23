@@ -205,9 +205,12 @@ class Tokens(models.Model):
 
 
 class UserActivity(models.Model):
-	"""User activity tracking for online status"""
-	user_id = models.OneToOneField(Users, on_delete=models.CASCADE, primary_key=True)
-	last_activity = models.DateTimeField(default=timezone.now)
+    """Track main user activities """
+    history_id = models.AutoField(primary_key=True)
+    user_id = models.ForeignKey(Users, on_delete=models.CASCADE)
+    activity_type = models.CharField(max_length=50, blank=True, null=True)   # e.g. LOGIN, LOGOUT, PRODUCT_UPLOAD, ORDER_PLACED
+    description = models.TextField(blank=True, null=True)  # optional details
+    timestamp = models.DateTimeField(default=timezone.now)
 
-	def __str__(self):
-		return f"Activity for {self.user_id}"
+    def __str__(self):
+        return f"{self.user_id} - {self.activity_type} at {self.timestamp}"

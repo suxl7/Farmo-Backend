@@ -1,14 +1,22 @@
 from django.utils import timezone
 from datetime import timedelta
-from backend.models import UserActivity
+from backend.models import UserActivity, Tokens
 
 
-def update_last_activity(user):
+def update_last_activity(user, token):
     """Update user's last activity timestamp"""
-    UserActivity.objects.update_or_create(
-        user_id=user,
-        defaults={'last_activity': timezone.now()}
-    )
+    #check if token and user are present in token table 
+    token_user_exists = Tokens.objects.filter(token=token, user_id=user, token_status="ACTIVE").exists()
+    if token_user_exists:
+        UserActivity.objects.update_or_create(
+            user_id=user,
+            defaults={'last_activity': timezone.now()}
+        )
+        return True
+    
+    return False
+    
+    
 
 
 def get_online_status(user):

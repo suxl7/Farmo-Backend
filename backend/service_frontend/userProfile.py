@@ -9,7 +9,7 @@ import secrets
 from django.utils import timezone
 import os
 from django.conf import settings
-from backend.utils.update_last_activity import get_online_status
+from backend.service_frontend.update_last_activity import get_online_status
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
