@@ -3,12 +3,13 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
+from backend.permissions import IsAuthenticated
 from ..models import Users, Tokens, UserActivity
-from ..serializers import UsersSerializer
+# from ..serializers import UsersSerializer
 from django.utils import timezone
-from datetime import timedelta
+# from datetime import timedelta
 from django.db.models import Q
-import secrets
+
 
 
 
@@ -56,8 +57,8 @@ def login(request):
     
     if not identifier or not password:
         return Response({
-            'login_access': False,
-            'error_code': 'MISSING_CREDENTIALS'
+            #'req_access': False,
+            'error': 'Credintials is missing.'
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
@@ -67,21 +68,21 @@ def login(request):
         # Verify password
         if not user.check_password(password):
             return Response({
-                'login_access': False,
-                'error_code': 'INVALID_CREDENTIALS'
+                #'req_access': False,
+                'error': 'Credintials is incorrect.'
             }, status=status.HTTP_401_UNAUTHORIZED)
         
         # Check profile status
         if user.profile_status == 'PENDING':
             return Response({
-                'login_access': False,
-                'error_code': 'ACCOUNT_PENDING'
+                'error_code': 'ACCOUNT_PENDING',
+                'error': 'Change your password to activate your account.'
             }, status=status.HTTP_403_FORBIDDEN)
         
         if user.profile_status != 'ACTIVE':
             return Response({
-                'login_access': False,
-                'error_code': 'ACCOUNT_INACTIVE'
+                'error_code': 'ACCOUNT_INACTIVE_OR_SUSPENDED',
+                'error': 'Account is inactive or Suspended.'
             }, status=status.HTTP_403_FORBIDDEN)
         
         # Generate tokens and manage active tokens
@@ -94,7 +95,7 @@ def login(request):
         
         # Return response according to documentation
         return Response({
-            'login_access': True,  # Changed from login_access
+           # 'req_access': True,  # Changed from login_access
             'token': token,
             'refresh_token': refresh_token,
             'user_id': user.user_id
@@ -102,9 +103,9 @@ def login(request):
         
     except Users.DoesNotExist:
         return Response({
-            'login_access': False,
-            'error_code': 'INVALID_CREDENTIALS'
-        }, status=status.HTTP_401_UNAUTHORIZED)
+           # 'req_access': False,
+            'error': 'User not found!'
+        }, status=status.HTTP_404_NOT_FOUND)
 
 
 
@@ -124,9 +125,9 @@ def login_with_token(request):
     
     if not token or not user_id or not refresh_token:
         return Response({
-            'login_access': False,
-            'error_code': 'MISSING_TOKENS_OR_USERID'
-        }, status=status.HTTP_400_BAD_REQUEST)
+            #'req_access': False,
+            'error': 'Coding Error! Token or user_id is missing. Try to Login through Password.'
+        }, status=status.HTTP_406_NOT_ACCEPTABLE)
 
     try:
         # Find token entry in database
@@ -140,16 +141,10 @@ def login_with_token(request):
         user = token_entry.user_id
         
         # Check profile status
-        if user.profile_status == 'PENDING':
-            return Response({
-                'login_access': False,
-                'error_code': 'ACCOUNT_PENDING', 
-            }, status=status.HTTP_403_FORBIDDEN)
-        
         if user.profile_status != 'ACTIVE':
             return Response({
-                'login_access': False,
-                'error_code': 'ACCOUNT_INACTIVE'
+               # 'req_access': False,
+                'error': 'Account is inactive or Suspended.'
             }, status=status.HTTP_403_FORBIDDEN)
         
         # Check if token is expired (after 40 days)
@@ -165,7 +160,7 @@ def login_with_token(request):
             
             # Return new tokens
             return Response({
-                'login_access': True,
+                #'req_access': True,
                 'token': new_token,
                 'refresh_token': new_refresh_token,
                 'user_id': user.user_id
@@ -177,7 +172,7 @@ def login_with_token(request):
             
             # According to doc: Second time login returns no new tokens
             return Response({
-                'login_access': True,
+                #'req_access': True,
                 'token' : token,
                 'refresh_token': refresh_token,
                 'user_id': user.user_id
@@ -185,8 +180,8 @@ def login_with_token(request):
         
     except Tokens.DoesNotExist:
         return Response({
-            'login_access': False,
-            'error_code': 'INVALID_TOKENS'
+            #'req_access': False,
+            'error_code': 'Invalid Token. Try to Login through Password.'
         }, status=status.HTTP_401_UNAUTHORIZED)
 
 
@@ -200,7 +195,10 @@ def verify_wallet_pin(request):
     
     # Validate required fields
     if not wallet_id or not pin:
-        return Response({'error': 'Wallet ID and PIN required'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            #'req_access': False,
+            'error_code': 'MISSING_REQUIRED_FIELDS'
+        }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
         from ..models import Wallet
@@ -217,23 +215,25 @@ def verify_wallet_pin(request):
 
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def logout(request):
     """Logout user by deactivating current token"""
     auth_header = request.META.get('HTTP_AUTHORIZATION', '')
     parts = auth_header.split()
     
     if len(parts) != 2 or parts[0].lower() != 'bearer':
-        return Response({'error': 'No token provided'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Token is not provided.'}, status=status.HTTP_400_BAD_REQUEST)
     
     token = parts[1]
     
     try:
         token_obj = Tokens.objects.get(token=token)
         token_obj.deactivate()
-        return Response({'logout_success': True}, status=status.HTTP_200_OK)
+        return Response({'message': 'Logout successful!'}, status=status.HTTP_200_OK)
     except Tokens.DoesNotExist:
-        return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Invalid Login token.'}, status=status.HTTP_401_UNAUTHORIZED)
+    except Exception as e:
+        return Response({'error': 'Logout failed:\n' + str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
@@ -244,7 +244,7 @@ def logout_all_devices(request):
     parts = auth_header.split()
     
     if len(parts) != 2 or parts[0].lower() != 'bearer':
-        return Response({'error': 'No token provided'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Token is not provided.'}, status=status.HTTP_400_BAD_REQUEST)
     
     token = parts[1]
     
@@ -252,7 +252,9 @@ def logout_all_devices(request):
         token_obj = Tokens.objects.get(token=token)
         user = token_obj.user_id
         Tokens.deactivate_all_user_tokens(user)
-        return Response({'logout_success': True, 'devices': 'all'}, status=status.HTTP_200_OK)
+        return Response({'message': 'Logout from all devices successful!'}, status=status.HTTP_200_OK)
     except Tokens.DoesNotExist:
-        return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Invalid Login token.'}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'error': 'Logout failed:\n' + str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

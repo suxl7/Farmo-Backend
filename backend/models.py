@@ -1,7 +1,8 @@
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth.hashers import make_password, check_password
-
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 
 class UsersProfile(models.Model):
@@ -26,6 +27,7 @@ class UsersProfile(models.Model):
 	join_date = models.DateTimeField(default=timezone.now)
 	about = models.CharField(max_length=50, blank=True, null=True)
 
+
 	def __str__(self):
 		return f"{self.f_name} {self.l_name}"
 
@@ -45,6 +47,11 @@ class Users(models.Model):
 	def check_password(self, raw_password):
 		"""Verify password against stored hash"""
 		return check_password(raw_password, self.password)
+	
+	def update_password(self, new_password):
+		"""Update to a new password"""
+		self.password = make_password(new_password)
+		self.save(update_fields=['password'])
 
 	def __str__(self):
 		return f"User {self.user_id}"
@@ -59,6 +66,7 @@ class Wallet(models.Model):
 	created_date = models.DateTimeField(default=timezone.now)
 	is_active = models.BooleanField(default=False)
 
+
 	def set_pin(self, raw_pin):
 		"""Hash the 4-digit PIN before saving"""
 		if len(raw_pin) != 4 or not raw_pin.isdigit():
@@ -68,6 +76,25 @@ class Wallet(models.Model):
 	def check_pin(self, raw_pin):
 		"""Verify entered PIN against stored hash"""
 		return check_password(raw_pin, self.pin)
+	
+	def update_pin(self, new_pin):
+		"""Update the PIN"""
+		if len(new_pin) != 4 or not new_pin.isdigit():
+			raise ValueError("PIN must be exactly 4 digits.")
+		self.pin = make_password(new_pin)
+		self.save(update_fields=['pin'])
+	
+	@receiver(post_save, sender='backend.Users')
+	def create_user_wallet(sender, instance, created, **kwargs):
+		"""Automatically create a wallet when a new user is created"""
+		if created and instance.is_admin == False:
+			Wallet.objects.create(
+				wallet_id=f"wallet_{instance.user_id}",
+				user_id=instance,
+				amount=0.00,
+				created_date=timezone.now(),
+				is_active=False
+			)
 
 	def __str__(self):
 		return f"Wallet {self.wallet_id}: {self.amount}"
@@ -268,8 +295,8 @@ class Connections(models.Model):
     target_user = models.ForeignKey(Users, on_delete=models.CASCADE, related_name="connected_to")
     status = models.CharField(max_length=20, default="PENDING")  # PENDING, ACCEPTED, BLOCKED
     created_at = models.DateTimeField(default=timezone.now)
-
-    class Meta:
+	
+    class Meta: # Means that a user cannot have multiple connection records with the same target user
         unique_together = ("user", "target_user")
 
     def __str__(self):

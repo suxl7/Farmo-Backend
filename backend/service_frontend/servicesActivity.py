@@ -2,10 +2,11 @@ from django.utils import timezone
 from datetime import timedelta
 from backend.models import UserActivity
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import  AllowAny
 from backend.permissions import ConnectionOnly
 from rest_framework.response import Response
 from backend.models import Users
+from backend.permissions import IsAuthenticated
 
 
 @api_view(['POST'])

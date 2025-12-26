@@ -15,13 +15,13 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 #from django.contrib import admin
-from django.urls import path, include
+from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
 from backend.service_frontend.authentication import login, verify_wallet_pin, login_with_token, logout, logout_all_devices
 from backend.service_frontend.servicesActivity import get_online_status, check_userid_available
 from backend.service_frontend.userProfile import register, verification_request, update_profile_picture
-from backend.service_frontend.viewProfile import profile_view, protected_example
+from backend.service_frontend.viewProfile import view_profile
 
 
 urlpatterns = [
@@ -36,8 +36,8 @@ urlpatterns = [
     path('api/user/verification-request/', verification_request, name='verification_request'),
     path('api/user/online-status/', get_online_status, name='get_online_status'),
     path('api/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin'),
-    path('api/user/profile/', profile_view, name='profile_view'),
-    path('api/protected/', protected_example, name='protected_example'),
+    path('api/user/profile/', view_profile, name='view_profile')
+
 ]
 
 # Serve media files during development

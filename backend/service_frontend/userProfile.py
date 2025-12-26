@@ -1,15 +1,14 @@
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from backend.serializers import UsersSerializer
+from rest_framework.permissions import AllowAny
+from backend.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework_simplejwt.tokens import RefreshToken
 from backend.models import Users, UsersProfile, UserActivity
 import secrets
 from django.utils import timezone
-import os
-from django.conf import settings
-#from backend.service_frontend.servicesActivity import get_online_status
+from django.utils.crypto import get_random_string
+
+
 from backend.utils.file_manager import FileManager
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -17,19 +16,24 @@ def check_userid(request):
     """Check if userID is available during registration"""
     user_id = request.GET.get('user_id')
     if not user_id:
-        return Response({'status': 1}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'status': 1}, status=status.HTTP_200_OK)
     
     """Check existence of user_id in Users model [exists is boolean]"""
     exists = Users.objects.filter(user_id=user_id).exists()
-    return Response({'status': 1 if exists else 0})
+    return Response({'status': 1 if exists else 0}, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register(request):
     """Register new user with profile"""
+    created_by = request.data.get('created_by')
+
     user_id = request.data.get('user_id')
-    password = request.data.get('password')
+    if created_by == 'Admin':
+        password = get_random_string(length=8)
+    else:
+        password = request.data.get('password')
     f_name = request.data.get('f_name') # required
     m_name = request.data.get('m_name', None) # optional
     l_name = request.data.get('l_name')
@@ -47,7 +51,7 @@ def register(request):
     sex = request.data.get('sex')
     dob = request.data.get('dob')
     user_type = request.data.get('user_type')
-    created_by = request.data.get('created_by')
+    
     profile_picture = request.FILES.get('profile_picture', None)
 
     join_date = timezone.now()
@@ -55,19 +59,17 @@ def register(request):
 
     if not all([user_id, password, f_name, l_name, user_type, phone, province, district, municipal, ward, tole, dob, sex]):
         return Response({
-            'registration_success': False,
-            'error_code': 'MISSING_REQUIRED_FIELDS'
+            'error': 'Required fields are missing.'
             }, status=status.HTTP_400_BAD_REQUEST)
     
     if Users.objects.filter(user_id=user_id).exists():
         return Response({
-            'registration_success': False,
-            'error_code': 'USERID_EXISTS'}, status=status.HTTP_400_BAD_REQUEST)
+            #'registration_success': False,
+            'error': 'User ID already exists.'}, status=status.HTTP_400_BAD_REQUEST)
     
     if user_type == 'SuperAdmin' and created_by == 'Admin':
         return Response({
-            'registration_success': False,
-            'error_code': 'INSUFFICIENT_PRIVILEGES'}, status=status.HTTP_403_FORBIDDEN)
+            'error': 'You are trying to create higher level user.'}, status=status.HTTP_403_FORBIDDEN)
     
     if user_type not in ['SuperAdmin', 'Admin']:
         is_admin = False
@@ -80,14 +82,13 @@ def register(request):
     '''
     if Users.objects.filter(phone=phone).count() >= 3:
         return Response({
-            'registration_success': False,
-            'error_code': 'PHONE_NUMBER_ACCOUNT_LIMIT_REACHED'}, status=status.HTTP_400_BAD_REQUEST)
+            'error': 'You have already created 3 accounts with this phone number. Try another phone number.'}, status=status.HTTP_400_BAD_REQUEST)
 
     active_user_count = Users.objects.filter(phone=phone, profile_status__in=['ACTIVE', 'PENDING']).count()
     if active_user_count >= 1:
         return Response({
-            'registration_success': False,
-            'error_code': 'PHONE_EXISTS_ACTIVE_ACCOUNT'}, status=status.HTTP_400_BAD_REQUEST)
+           # 'registration_success': False,
+            'error': 'You have already created an account with this phone number.'}, status=status.HTTP_400_BAD_REQUEST)
     
     profile_id = f"P{secrets.token_hex(8).upper()}"
     
@@ -103,8 +104,7 @@ def register(request):
         
         if not result['success']:
             return Response({
-                'registration_success': False,
-                'error_code': 'PROFILE_PICTURE_UPLOAD_FAILED'
+                'error': 'Profile picture upload failed.'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         profile_picture_url = result['file_url']
@@ -145,9 +145,10 @@ def register(request):
     )
     user.set_password(password)
     user.save()
+    message = "Registration successful. Use password: \"" + password + "\" to login." if profile_status == 'PENDING' else "Registration successful. Please login."
     
     return Response({
-        'registration_success': True
+       'message': message
     }, status=status.HTTP_201_CREATED)
 
 
@@ -172,7 +173,6 @@ def verification_request(request):
     
     if not front_result['success']:
         return Response({
-            'verification_success': False,
             'error': front_result['error']
         }, status=status.HTTP_400_BAD_REQUEST)
     
@@ -188,7 +188,6 @@ def verification_request(request):
         # Clean up front file
         file_manager.delete_file('profile', front_result['file_name'])
         return Response({
-            'verification_success': False,
             'error': back_result['error']
         }, status=status.HTTP_400_BAD_REQUEST)
     
@@ -203,21 +202,14 @@ def verification_request(request):
         file_manager.delete_file('profile', front_result['file_name'])
         file_manager.delete_file('profile', back_result['file_name'])
         return Response({
-            'verification_success': False,
             'error': selfie_result['error']
         }, status=status.HTTP_400_BAD_REQUEST)
     
     # TODO: Save to Verification model
     
     return Response({
-        'verification_success': True,
-        'verification_id': f"V{secrets.token_hex(8).upper()}",
-        'documents': {
-            'front': front_result['file_url'],
-            'back': back_result['file_url'],
-            'selfie': selfie_result['file_url']
-        }
-    }, status=status.HTTP_201_CREATED)
+        'message': 'Verification request submitted successfully.'
+    }, status=status.HTTP_200_OK)
 
 
 @api_view(['PUT'])
@@ -238,7 +230,6 @@ def update_profile_picture(request):
     
     if not result['success']:
         return Response({
-            'success': False,
             'error': result['error']
         }, status=status.HTTP_400_BAD_REQUEST)
     
@@ -250,6 +241,5 @@ def update_profile_picture(request):
     UserActivity.create_activity(request.user, activity="UPDATE_PROFILE_PIC", discription="")
 
     return Response({
-        'success': True,
-        'profile_picture_url': result['file_url']
+        'message': 'Profile picture updated successfully.'
     }, status=status.HTTP_200_OK)
