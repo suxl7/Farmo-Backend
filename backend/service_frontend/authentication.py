@@ -3,13 +3,13 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
-from ..models import Users, Tokens
+from ..models import Users, Tokens, UserActivity
 from ..serializers import UsersSerializer
 from django.utils import timezone
 from datetime import timedelta
 from django.db.models import Q
 import secrets
-from backend.utils.update_activity import update_activity
+
 
 
 # Helper function to manage tokens [check, generate, save, deactivate old if needed]
@@ -27,21 +27,17 @@ def check_generate_save_new_token(user, device_info):
         oldest_token.token_status = "INACTIVE"
         oldest_token.save(update_fields=["token_status"])
     
+    # Step 3: Set expiration based on user type
     if user.is_admin:
-        expiration_delta = timedelta(hours=12)  # Admin tokens valid for 12 hours
+        expiration_days = 1  # Admin tokens valid for 1 day
     else:
-        expiration_delta = timedelta(days=40)
+        expiration_days = 40  # Farmer/Consumer tokens valid for 40 days
     
-    # Step 3: Create the new token
-    new_token = Tokens.objects.create(
-        user_id=user,
-        token=secrets.token_urlsafe(32),
-        refresh_token=secrets.token_urlsafe(32),
-        device_info=device_info,
-        issued_at=timezone.now(),
-        expires_at=timezone.now() + expiration_delta,  # example expiry
-        token_status="ACTIVE"
-    )
+    # Step 4: Create the new token using the model's create_token method
+    new_token = Tokens.create_token(user, days=expiration_days)
+    new_token.device_info = device_info
+    new_token.save(update_fields=["device_info"])
+    
     return new_token
 
 
@@ -94,7 +90,7 @@ def login(request):
         refresh_token = token_obj.refresh_token
         
         # Update last activity
-        update_activity(user, activity="LOGIN", discription="")
+        UserActivity.create_activity(user, activity="LOGIN", discription="")
         
         # Return response according to documentation
         return Response({
@@ -165,7 +161,7 @@ def login_with_token(request):
             new_token = new_token_obj.token
             new_refresh_token = new_token_obj.refresh_token
             
-            update_activity(user, activity="LOGIN", discription="")
+            UserActivity.create_activity(user, activity="LOGIN", discription="")
             
             # Return new tokens
             return Response({
@@ -177,7 +173,7 @@ def login_with_token(request):
         
         else:
             # Token still valid - just grant access
-            update_activity(user, activity="LOGIN", discription="")
+            UserActivity.create_activity(user, activity="LOGIN", discription="")
             
             # According to doc: Second time login returns no new tokens
             return Response({
@@ -195,7 +191,7 @@ def login_with_token(request):
 
 
 
-@api_view(['POST'])  # Requires JWT authentication (default)
+@api_view(['POST'])
 def verify_wallet_pin(request):
     """Verify wallet PIN for authenticated user before transactions"""
     # Get wallet ID and PIN from request
@@ -218,4 +214,45 @@ def verify_wallet_pin(request):
     except Wallet.DoesNotExist:
         # Wallet not found or doesn't belong to user
         return Response({'error': 'Wallet not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def logout(request):
+    """Logout user by deactivating current token"""
+    auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+    parts = auth_header.split()
+    
+    if len(parts) != 2 or parts[0].lower() != 'bearer':
+        return Response({'error': 'No token provided'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    token = parts[1]
+    
+    try:
+        token_obj = Tokens.objects.get(token=token)
+        token_obj.deactivate()
+        return Response({'logout_success': True}, status=status.HTTP_200_OK)
+    except Tokens.DoesNotExist:
+        return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def logout_all_devices(request):
+    """Logout user from all devices by deactivating all tokens"""
+    auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+    parts = auth_header.split()
+    
+    if len(parts) != 2 or parts[0].lower() != 'bearer':
+        return Response({'error': 'No token provided'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    token = parts[1]
+    
+    try:
+        token_obj = Tokens.objects.get(token=token)
+        user = token_obj.user_id
+        Tokens.deactivate_all_user_tokens(user)
+        return Response({'logout_success': True, 'devices': 'all'}, status=status.HTTP_200_OK)
+    except Tokens.DoesNotExist:
+        return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
 

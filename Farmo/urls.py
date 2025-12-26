@@ -18,9 +18,10 @@ Including another URLconf
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from backend.service_frontend.authentication import login, verify_wallet_pin, login_with_token
+from backend.service_frontend.authentication import login, verify_wallet_pin, login_with_token, logout, logout_all_devices
 from backend.service_frontend.servicesActivity import get_online_status, check_userid_available
 from backend.service_frontend.userProfile import register, verification_request, update_profile_picture
+from backend.service_frontend.viewProfile import profile_view, protected_example
 
 
 urlpatterns = [
@@ -29,10 +30,14 @@ urlpatterns = [
     path('api/auth/check-userid/', check_userid_available, name='check_userid_available'),
     path('api/auth/login/', login, name='login'),
     path('api/auth/login-with-token/', login_with_token, name='login_with_token'),
+    path('api/auth/logout/', logout, name='logout'),
+    path('api/auth/logout-all/', logout_all_devices, name='logout_all_devices'),
     path('api/user/update-profile-picture/', update_profile_picture, name='update_profile_picture'),
     path('api/user/verification-request/', verification_request, name='verification_request'),
     path('api/user/online-status/', get_online_status, name='get_online_status'),
-    path('api/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin')
+    path('api/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin'),
+    path('api/user/profile/', profile_view, name='profile_view'),
+    path('api/protected/', protected_example, name='protected_example'),
 ]
 
 # Serve media files during development

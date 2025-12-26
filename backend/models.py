@@ -200,6 +200,42 @@ class Tokens(models.Model):
 	refresh_token = models.TextField(blank=True, null=True)
 	token_status = models.CharField(max_length=20, default='ACTIVE')
 
+	@classmethod
+	def create_token(cls, user, days=40):
+		"""Generate a random token and set expiry days ahead"""
+		import secrets
+		from datetime import timedelta
+		token = secrets.token_urlsafe(32)
+		refresh_token = secrets.token_urlsafe(32)
+		return cls.objects.create(
+			user_id=user,
+			token=token,
+			refresh_token=refresh_token,
+			issued_at=timezone.now(),
+			expires_at=timezone.now() + timedelta(days=days),
+			token_status='ACTIVE'
+		)
+
+	def suspend(self):
+		"""Suspend this token"""
+		self.token_status = 'SUSPENDED'
+		self.save(update_fields=['token_status'])
+
+	def deactivate(self):
+		"""Deactivate this token"""
+		self.token_status = 'INACTIVE'
+		self.save(update_fields=['token_status'])
+
+	def activate(self):
+		"""Reactivate this token"""
+		self.token_status = 'ACTIVE'
+		self.save(update_fields=['token_status'])
+
+	@classmethod
+	def deactivate_all_user_tokens(cls, user):
+		"""Deactivate all tokens for a user (logout all devices)"""
+		cls.objects.filter(user_id=user, token_status='ACTIVE').update(token_status='INACTIVE')
+
 	def __str__(self):
 		return f"Token for {self.user_id}"
 
@@ -212,9 +248,19 @@ class UserActivity(models.Model):
     description = models.TextField(blank=True, null=True)  # optional details
     timestamp = models.DateTimeField(default=timezone.now)
 
+    @classmethod
+    def create_activity(cls, user, activity, discription):
+        """Create a new activity record"""
+        cls.objects.create(
+            user_id=user,
+            activity_type=activity,
+            description=discription,
+            timestamp=timezone.now()
+        )
+
     def __str__(self):
         return f"{self.user_id} - {self.activity_type} at {self.timestamp}"
-	
+
 class Connections(models.Model):
     """Track user-to-user connections (mutual or pending)"""
     connection_id = models.AutoField(primary_key=True)

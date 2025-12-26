@@ -4,14 +4,13 @@ from backend.serializers import UsersSerializer
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
-from backend.models import Users, UsersProfile
+from backend.models import Users, UsersProfile, UserActivity
 import secrets
 from django.utils import timezone
 import os
 from django.conf import settings
 #from backend.service_frontend.servicesActivity import get_online_status
 from backend.utils.file_manager import FileManager
-from backend.utils.update_activity import update_activity
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def check_userid(request):
@@ -248,7 +247,7 @@ def update_profile_picture(request):
     profile.profile_url = result['file_url']
     profile.save()
     
-    update_activity(request.user, activity="UPDATE_PROFILE_PIC", discription="")
+    UserActivity.create_activity(request.user, activity="UPDATE_PROFILE_PIC", discription="")
 
     return Response({
         'success': True,
