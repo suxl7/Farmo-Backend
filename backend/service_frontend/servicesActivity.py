@@ -8,11 +8,11 @@ from rest_framework.response import Response
 from backend.models import Users
 
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def check_userid(request):
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def check_userid_available(request):
     """Check if userID is available during registration"""
-    user_id = request.GET.get('user_id')
+    user_id = request.data.get('user_id')
     if not user_id:
         return Response({'status': 1}, status=400)
     
@@ -27,6 +27,10 @@ def get_online_status(request):
     """Get online status of a connected user"""
     try:
         target_user=request.data.get('target_user')
+        # Why use request.META? Because request.headers is case-insensitive and may not work in all environments
+        # Why use 'HTTP_AUTHORIZATION'? Because Django prepends 'HTTP_' to header names in request.META
+        # Why use this whole line? To extract the token from the 'Authorization: Bearer <token>' format
+
         activity = UserActivity.objects.filter(user_id=target_user).order_by('-timestamp').first() # get latest activity
         last_activity = activity.timestamp
 

@@ -19,14 +19,14 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from backend.service_frontend.authentication import login, verify_wallet_pin, login_with_token
-from backend.service_frontend.servicesActivity import get_online_status, check_userid
+from backend.service_frontend.servicesActivity import get_online_status, check_userid_available
 from backend.service_frontend.userProfile import register, verification_request, update_profile_picture
 
 
 urlpatterns = [
     #path('admin/', admin.site.urls),
     path('api/auth/register/', register, name='register'),
-    path('api/auth/check-userid/', check_userid, name='check_userid'),
+    path('api/auth/check-userid/', check_userid_available, name='check_userid_available'),
     path('api/auth/login/', login, name='login'),
     path('api/auth/login-with-token/', login_with_token, name='login_with_token'),
     path('api/user/update-profile-picture/', update_profile_picture, name='update_profile_picture'),
