@@ -7,20 +7,7 @@ from backend.models import Users, UsersProfile, UserActivity
 import secrets
 from django.utils import timezone
 from django.utils.crypto import get_random_string
-
-
-from backend.utils.file_manager import FileManager
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def check_userid(request):
-    """Check if userID is available during registration"""
-    user_id = request.GET.get('user_id')
-    if not user_id:
-        return Response({'status': 1}, status=status.HTTP_200_OK)
-    
-    """Check existence of user_id in Users model [exists is boolean]"""
-    exists = Users.objects.filter(user_id=user_id).exists()
-    return Response({'status': 1 if exists else 0}, status=status.HTTP_200_OK)
+from backend.utils.media_handler import FileManager
 
 
 @api_view(['POST'])
@@ -49,13 +36,16 @@ def register(request):
     facebook = request.data.get('facebook', None)
     about = request.data.get('about', None)
     sex = request.data.get('sex')
-    dob = request.data.get('dob')
+    dob_str = request.data.get('dob')
+    
     user_type = request.data.get('user_type')
     
     profile_picture = request.FILES.get('profile_picture', None)
 
     join_date = timezone.now()
 
+    from django.utils.dateparse import parse_date
+    dob = parse_date(dob_str)
 
     if not all([user_id, password, f_name, l_name, user_type, phone, province, district, municipal, ward, tole, dob, sex]):
         return Response({

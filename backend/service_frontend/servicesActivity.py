@@ -1,5 +1,6 @@
 from django.utils import timezone
 from datetime import timedelta
+from rest_framework import status
 from backend.models import UserActivity
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import  AllowAny
@@ -12,14 +13,14 @@ from backend.permissions import IsAuthenticated
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def check_userid_available(request):
-    """Check if userID is available during registration"""
+    """Check if userID is available"""
     user_id = request.data.get('user_id')
     if not user_id:
-        return Response({'status': 1}, status=400)
+        return Response({'status': 1}, status=status.HTTP_200_OK)
     
     """Check existence of user_id in Users model [exists is boolean]"""
     exists = Users.objects.filter(user_id=user_id).exists()
-    return Response({'status': 1 if exists else 0})    
+    return Response({'status': 1 if exists else 0}, status=status.HTTP_200_OK)    
     
 
 @api_view(['POST'])

@@ -21,7 +21,7 @@ from django.conf.urls.static import static
 from backend.service_frontend.authentication import login, verify_wallet_pin, login_with_token, logout, logout_all_devices
 from backend.service_frontend.servicesActivity import get_online_status, check_userid_available
 from backend.service_frontend.userProfile import register, verification_request, update_profile_picture
-from backend.service_frontend.viewProfile import view_profile
+from backend.service_frontend.servicesProfile import view_profile
 
 
 urlpatterns = [

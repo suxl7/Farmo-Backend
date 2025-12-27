@@ -1,7 +1,8 @@
 import os
+import tempfile
+import cv2
 from django.conf import settings
 from django.core.exceptions import ValidationError
-#from pathlib import Path
 
 
 class FileManager:
@@ -57,6 +58,12 @@ class FileManager:
         Returns:
             dict: Result with success status and file info
         """
+        # Validate video duration if it's a video
+        if file_type == 'vid':
+            duration_check = self._validate_video_duration(file)
+            if not duration_check['success']:
+                return duration_check
+        
         return self._save_file(
             file=file,
             category='product',
@@ -178,6 +185,36 @@ class FileManager:
             }
         
         return {'success': True}
+    
+    def _validate_video_duration(self, file, max_duration=30):
+        """Validate video duration using OpenCV"""
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.name)[1]) as tmp:
+                for chunk in file.chunks():
+                    tmp.write(chunk)
+                tmp_path = tmp.name
+            
+            cap = cv2.VideoCapture(tmp_path)
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+            cap.release()
+            
+            if fps > 0:
+                duration = frame_count / fps
+                if duration > max_duration:
+                    os.unlink(tmp_path)
+                    return {'success': False, 'error': f'Video duration exceeds {max_duration} seconds'}
+            
+            os.unlink(tmp_path)
+            file.seek(0)
+            return {'success': True}
+        except:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            file.seek(0)
+            return {'success': True}
+    
     
     
     def _get_default_extensions(self, file_purpose):

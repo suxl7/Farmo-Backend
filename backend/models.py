@@ -3,7 +3,7 @@ from django.utils import timezone
 from django.contrib.auth.hashers import make_password, check_password
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-
+import secrets
 
 class UsersProfile(models.Model):
 	"""User profile storing detailed user information"""
@@ -100,35 +100,68 @@ class Wallet(models.Model):
 		return f"Wallet {self.wallet_id}: {self.amount}"
 
 
-class ProductMedia(models.Model):
-	"""ProductMedia model for product images and videos"""
-	media_id = models.AutoField(primary_key=True)
-	media_url = models.CharField(max_length=255)
-	media_type = models.CharField(max_length=10, blank=True, null=True)
-
-	def __str__(self):
-		return f"Media {self.media_id}"
-
-
 class Product(models.Model):
 	"""Product model for farmer's agricultural products"""
 	P_id = models.CharField(max_length=50, primary_key=True)
 	user_id = models.ForeignKey(Users, on_delete=models.PROTECT)
-	media_id = models.ForeignKey(ProductMedia, on_delete=models.PROTECT)
 	name = models.CharField(max_length=255)
 	category = models.CharField(max_length=100)
 	is_organic = models.BooleanField(default=False)
 	quantity_available = models.IntegerField()
 	cost_per_unit = models.DecimalField(max_digits=10, decimal_places=2)
 	produced_date = models.DateField()
-	registered_date = models.DateTimeField(default=timezone.now)
+	registered_at = models.DateTimeField(default=timezone.now)
 	expiry_Date = models.DateField(null=True, blank=True)
 	description = models.TextField(blank=True, null=True)
 	delivery_option = models.CharField(max_length=100, default='not-available')
 	product_status = models.CharField(max_length=100, default='AVAILABLE')
 
+	@classmethod
+	def create_product(cls, user_id, name, category, is_organic, quantity_available, cost_per_unit, produced_date, expiry_Date, description, delivery_option):
+		"""Create a new product"""
+		pid = secrets.token_hex(10).upper()
+		cls.objects.create(
+			P_id= pid,
+			user_id=user_id,
+			name=name,
+			category=category,
+			is_organic=is_organic,
+			quantity_available=quantity_available,
+			cost_per_unit=cost_per_unit,
+			registered_at=timezone.now(),
+			produced_date=produced_date,
+			expiry_Date=expiry_Date,
+			description=description,
+			delivery_option	=delivery_option,
+			product_status='AVAILABLE'
+		)
+		return pid
+
 	def __str__(self):
 		return f"{self.name} ({self.p_id})"
+	
+
+class ProductMedia(models.Model):
+	"""ProductMedia model for product images and videos"""
+	media_id = models.CharField(max_length=32,primary_key=True)
+	P_id = models.ForeignKey(Product, on_delete=models.PROTECT)
+	media_url = models.CharField(max_length=255)
+	media_type = models.CharField(max_length=10, blank=True, null=True)
+
+	@classmethod
+	def create_media(cls,P_id, media_url, media_type):
+		"""Create a new media entry"""
+		media_id = secrets.token_hex(16).upper()
+		cls.objects.create(
+			media_id=media_id,
+			P_id=P_id,
+			media_url=media_url,
+			media_type=media_type
+		)
+		return True if cls.objects.filter(media_id=media_id).exists() else False
+
+	def __str__(self):
+		return f"Media {self.media_id}"
 
 
 class ProductRating(models.Model):
@@ -219,7 +252,7 @@ class Transaction(models.Model):
 
 class Tokens(models.Model):
 	"""Tokens model for JWT token management"""
-	user_id = models.ForeignKey(Users, on_delete=models.CASCADE)
+	user_id = models.ForeignKey(Users, on_delete=models.PROTECT)
 	token = models.TextField()
 	device_info = models.CharField(max_length=255, blank=True, null=True)
 	issued_at = models.DateTimeField(default=timezone.now)
@@ -230,8 +263,7 @@ class Tokens(models.Model):
 	@classmethod
 	def create_token(cls, user, days=40):
 		"""Generate a random token and set expiry days ahead"""
-		import secrets
-		from datetime import timedelta
+	
 		token = secrets.token_urlsafe(32)
 		refresh_token = secrets.token_urlsafe(32)
 		return cls.objects.create(
@@ -239,7 +271,7 @@ class Tokens(models.Model):
 			token=token,
 			refresh_token=refresh_token,
 			issued_at=timezone.now(),
-			expires_at=timezone.now() + timedelta(days=days),
+			expires_at=timezone.now() + timezone.timedelta(days=days),
 			token_status='ACTIVE'
 		)
 
