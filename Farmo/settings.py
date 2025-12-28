@@ -138,12 +138,15 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Custom User Model
+#AUTH_USER_MODEL = 'backend.Users'
+
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'backend.permissions.CustomTokenAuthentication',
-    ],
+
     'DEFAULT_PERMISSION_CLASSES': [
-        'backend.permissions.IsAuthenticated',
+        'rest_framework.permissions.AllowAny',
+        'backend.permissions.HasValidTokenForUser',
+        'backend.permissions.ConnectionOnly',
     ],
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',

@@ -1,6 +1,6 @@
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
-from backend.permissions import IsAuthenticated
+from backend.permissions import HasValidTokenForUser
 from rest_framework.response import Response
 from rest_framework import status
 from backend.models import Users, UsersProfile, UserActivity
@@ -143,7 +143,7 @@ def register(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([HasValidTokenForUser])
 def verification_request(request):
     user_id = request.data.get('user_id')
     id_front = request.FILES.get('id_front')
@@ -203,7 +203,7 @@ def verification_request(request):
 
 
 @api_view(['PUT'])
-@permission_classes([IsAuthenticated])
+@permission_classes([HasValidTokenForUser])
 def update_profile_picture(request):
     user_id = request.user.user_id
     new_picture = request.FILES.get('profile_picture')

@@ -1,82 +1,60 @@
 from rest_framework import permissions
 from .models import Connections
 from django.utils import timezone
-from rest_framework.authentication import BaseAuthentication
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.permissions import BasePermission
+from django.db.models import Q
 from .models import Tokens
 
 
+# WORK on POST Method only 
+class ConnectionOnly(BasePermission):
+    """Allow access only if requester is connected to target user in body"""
 
-class IsOwnerOrReadOnly(permissions.BasePermission):
-    """Allow read access to all, write access only to owner"""
-    
-    def has_object_permission(self, request, view, obj):
-        # Allow GET, HEAD, OPTIONS requests to anyone
-        if request.method in permissions.SAFE_METHODS:
-            return True
-        # Only owner can modify
-        return obj.user == request.user
+    def has_permission(self, request, view):
+        
+        requester_id = request.headers.get("userid")
+        target_id = request.data.get("target_user")
 
+        if not requester_id or not target_id:
+            return False
 
-class ConnectionOnly(permissions.BasePermission):
-    """Allow access only if requester is connected to target user"""
-
-    def has_object_permission(self, request, view, obj):
-        # obj here will be the target user whose status is being checked
+        # Use Q objects for single query
         return Connections.objects.filter(
-            user=request.user,
-            target_user=obj,
-            status="ACCEPTED"
-        ).exists() or Connections.objects.filter(
-            user=obj,
-            target_user=request.user,
+            Q(user_id=requester_id, target_user_id=target_id) | 
+            Q(user_id=target_id, target_user_id=requester_id),
             status="ACCEPTED"
         ).exists()
 
 
+class HasValidTokenForUser(BasePermission):
+    """
+    Permission that checks if the provided token belongs to the given user_id
+    and is still active + not expired.
+    """
 
-class IsWalletOwner(permissions.BasePermission):
-    """Allow access only to wallet owner"""
-    
-    def has_object_permission(self, request, view, obj):
-        # Only wallet owner can access
-        return obj.user == request.user
-    
-
-
-class CustomTokenAuthentication(BaseAuthentication):
-    def authenticate(self, request):
-        auth_header = request.META.get('HTTP_AUTHORIZATION', '')
-        parts = auth_header.split()
-        if len(parts) != 2 or parts[0].lower() != 'bearer':
-            return None
-
-        token = parts[1]
-
-        try:
-            token_obj = Tokens.objects.get(token=token)
-        except Tokens.DoesNotExist:
-            raise AuthenticationFailed('Invalid token')
-
-        if token_obj.token_status != 'ACTIVE':
-            raise AuthenticationFailed(f'Token is {token_obj.token_status.lower()}')
-
-        if token_obj.expires_at < timezone.now():
-            raise AuthenticationFailed('Token expired')
-
-        return (token_obj.user_id, None)
-
-class TokenAuthentication(CustomTokenAuthentication):
-    pass
-
-class IsAuthenticated(permissions.BasePermission):
     def has_permission(self, request, view):
-        auth = CustomTokenAuthentication()
-        try:
-            user_auth = auth.authenticate(request)
-            if user_auth is not None:
-                request.user = user_auth[0]
-                return True
-        except AuthenticationFailed:
+        # Expect frontend to send both headers:
+        # Authorization: token <token_value>
+        # userid: <user_id>
+        auth_header = request.headers.get("Authorization")
+        user_id = request.headers.get("userid")
+
+        if not auth_header or not auth_header.startswith("token "):
             return False
-        return False
+        if not user_id:
+            return False
+
+        token_value = auth_header.split()[1]
+
+        try:
+            token_obj = Tokens.objects.get(token=token_value, user_id__user_id=user_id)
+        except Tokens.DoesNotExist:
+            return False
+
+        # Check token status and expiry
+        if token_obj.token_status != "ACTIVE":
+            return False
+        if token_obj.expires_at < timezone.now():
+            return False
+
+        return True

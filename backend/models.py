@@ -53,6 +53,7 @@ class Users(models.Model):
 		self.password = make_password(new_password)
 		self.save(update_fields=['password'])
 
+
 	def __str__(self):
 		return f"User {self.user_id}"
 
@@ -66,6 +67,9 @@ class Wallet(models.Model):
 	created_date = models.DateTimeField(default=timezone.now)
 	is_active = models.BooleanField(default=False)
 
+	class Meta:
+		unique_together = ('wallet_id', 'user_id')
+	
 
 	def set_pin(self, raw_pin):
 		"""Hash the 4-digit PIN before saving"""
@@ -102,7 +106,7 @@ class Wallet(models.Model):
 
 class Product(models.Model):
 	"""Product model for farmer's agricultural products"""
-	P_id = models.CharField(max_length=50, primary_key=True)
+	p_id = models.CharField(max_length=50, primary_key=True)
 	user_id = models.ForeignKey(Users, on_delete=models.PROTECT)
 	name = models.CharField(max_length=255)
 	category = models.CharField(max_length=100)
@@ -121,7 +125,7 @@ class Product(models.Model):
 		"""Create a new product"""
 		pid = secrets.token_hex(10).upper()
 		cls.objects.create(
-			P_id= pid,
+			p_id= pid,
 			user_id=user_id,
 			name=name,
 			category=category,
@@ -144,7 +148,7 @@ class Product(models.Model):
 class ProductMedia(models.Model):
 	"""ProductMedia model for product images and videos"""
 	media_id = models.CharField(max_length=32,primary_key=True)
-	P_id = models.ForeignKey(Product, on_delete=models.PROTECT)
+	p_id = models.ForeignKey(Product, on_delete=models.PROTECT, null=True, blank=True)
 	media_url = models.CharField(max_length=255)
 	media_type = models.CharField(max_length=10, blank=True, null=True)
 
@@ -167,7 +171,7 @@ class ProductMedia(models.Model):
 class ProductRating(models.Model):
 	"""ProductRating model for product reviews and ratings"""
 	PRating_id = models.CharField(max_length=50, primary_key=True)
-	P_id = models.ForeignKey(Product, on_delete=models.PROTECT)
+	p_id = models.ForeignKey(Product, on_delete=models.PROTECT)
 	consumer_id = models.ForeignKey(Users, on_delete=models.PROTECT)
 	score = models.IntegerField()
 	comment = models.TextField()
@@ -179,9 +183,9 @@ class ProductRating(models.Model):
 
 class FarmerRating(models.Model):
 	"""FarmerRating model for farmer reviews by consumers"""
-	R_id = models.CharField(max_length=50, primary_key=True)
-	Farmer_id = models.ForeignKey(Users, on_delete=models.PROTECT, related_name='Farmer')
-	Consumer_id = models.ForeignKey(Users, on_delete=models.PROTECT, related_name='Consumer')
+	r_id = models.CharField(max_length=50, primary_key=True)
+	farmer_id = models.ForeignKey(Users, on_delete=models.PROTECT, related_name='Farmer')
+	consumer_id = models.ForeignKey(Users, on_delete=models.PROTECT, related_name='Consumer')
 	score = models.IntegerField()
 	comment = models.TextField()
 	date = models.DateTimeField(default=timezone.now)
@@ -211,10 +215,10 @@ class Verification(models.Model):
 class OrderRequest(models.Model):
 	"""OrderRequest model for customer orders"""
 	order_id = models.CharField(max_length=50, primary_key=True)
-	user_id = models.ForeignKey(Users, on_delete=models.PROTECT)
+	consumer_id = models.ForeignKey(Users, on_delete=models.PROTECT)
 	order_date = models.DateTimeField(default=timezone.now)
 	total_cost = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-	fullfilment_status = models.CharField(max_length=20, default='PLACED')
+	order_status = models.CharField(max_length=20, default='PENDING') # Accepted, Rejected
 	shipping_address = models.TextField(blank=True, null=True)
 	expected_delivery_date = models.DateField(blank=True, null=True)
 
@@ -225,12 +229,12 @@ class OrderRequest(models.Model):
 class OrdProdLink(models.Model):
 	"""OrdProdLink model linking orders to products with quantities"""
 	order_id = models.ForeignKey(OrderRequest, on_delete=models.PROTECT)
-	P_id = models.ForeignKey(Product, on_delete=models.PROTECT)
+	p_id = models.ForeignKey(Product, on_delete=models.PROTECT)
 	quantity = models.IntegerField()
 	price_at_sale = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
 
 	class Meta:
-		unique_together = ('order_id', 'P_id')
+		unique_together = ('order_id', 'p_id')
 
 	def __str__(self):
 		return f"{self.quantity} x Product {self.P_id} in order {self.order_id}"
@@ -260,6 +264,7 @@ class Tokens(models.Model):
 	refresh_token = models.TextField(blank=True, null=True)
 	token_status = models.CharField(max_length=20, default='ACTIVE')
 
+	
 	@classmethod
 	def create_token(cls, user, days=40):
 		"""Generate a random token and set expiry days ahead"""
@@ -295,6 +300,16 @@ class Tokens(models.Model):
 		"""Deactivate all tokens for a user (logout all devices)"""
 		cls.objects.filter(user_id=user, token_status='ACTIVE').update(token_status='INACTIVE')
 
+	@property
+	def is_active(self):
+		"""Check if the token is still active"""
+		return self.token_status == 'ACTIVE' and not self.is_expired
+	
+	@property
+	def is_expired(self):
+		"""Check if the token has expired"""
+		return timezone.now() > self.expires_at
+	
 	def __str__(self):
 		return f"Token for {self.user_id}"
 

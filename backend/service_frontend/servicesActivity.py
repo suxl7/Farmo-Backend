@@ -3,15 +3,14 @@ from datetime import timedelta
 from rest_framework import status
 from backend.models import UserActivity
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import  AllowAny
 from backend.permissions import ConnectionOnly
 from rest_framework.response import Response
 from backend.models import Users
-from backend.permissions import IsAuthenticated
+from backend.permissions import HasValidTokenForUser
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([HasValidTokenForUser])
 def check_userid_available(request):
     """Check if userID is available"""
     user_id = request.data.get('user_id')
@@ -24,7 +23,7 @@ def check_userid_available(request):
     
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated, ConnectionOnly])
+@permission_classes([HasValidTokenForUser, ConnectionOnly])
 def get_online_status(request):
     """Get online status of a connected user"""
     try:

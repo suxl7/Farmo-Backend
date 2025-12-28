@@ -1,9 +1,9 @@
-from rest_framework_simplejwt.tokens import RefreshToken
+# from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
-from backend.permissions import IsAuthenticated
+from backend.permissions import HasValidTokenForUser
 from ..models import Users, Tokens, UserActivity
 # from ..serializers import UsersSerializer
 from django.utils import timezone
@@ -215,7 +215,7 @@ def verify_wallet_pin(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([HasValidTokenForUser])
 def logout(request):
     """Logout user by deactivating current token"""
     auth_header = request.META.get('HTTP_AUTHORIZATION', '')
@@ -237,7 +237,7 @@ def logout(request):
 
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([HasValidTokenForUser])
 def logout_all_devices(request):
     """Logout user from all devices by deactivating all tokens"""
     auth_header = request.META.get('HTTP_AUTHORIZATION', '')

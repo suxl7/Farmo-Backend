@@ -22,6 +22,7 @@ from backend.service_frontend.authentication import login, verify_wallet_pin, lo
 from backend.service_frontend.servicesActivity import get_online_status, check_userid_available
 from backend.service_frontend.userProfile import register, verification_request, update_profile_picture
 from backend.service_frontend.servicesProfile import view_profile
+from backend.service_frontend.orders import get_farmer_orders
 
 
 urlpatterns = [
@@ -36,8 +37,8 @@ urlpatterns = [
     path('api/user/verification-request/', verification_request, name='verification_request'),
     path('api/user/online-status/', get_online_status, name='get_online_status'),
     path('api/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin'),
-    path('api/user/profile/', view_profile, name='view_profile')
-
+    path('api/user/profile/', view_profile, name='view_profile'),
+    path('api/farmer/orders/', get_farmer_orders, name='get_farmer_orders')
 ]
 
 # Serve media files during development
