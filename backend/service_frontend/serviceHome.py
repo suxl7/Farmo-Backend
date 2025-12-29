@@ -21,7 +21,16 @@ def dashboard_fullfillment(request):
     
     elif request.userid.profile_id.user_type == 'Farmer':
         return Response({
+        'connections': get_user_total_connections(request.userid),
+        'wallet_balance': get_wallet_balance(request.userid),
+        'todays_income': get_todays_income(request.userid),
         'total_orders': get_farmer_orderRequests(request.userid)
+        }, status=status.HTTP_200_OK)
+    
+    elif request.userid.profile_id.user_type == 'Consumer':
+        return Response({
+        'connections': get_user_total_connections(request.userid),
+        'order_requests': get_orderRequested_by_consumer(request.userid)
         }, status=status.HTTP_200_OK)
 
 
