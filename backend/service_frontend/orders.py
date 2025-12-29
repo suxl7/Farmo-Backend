@@ -2,14 +2,16 @@ from backend.permissions import HasValidTokenForUser
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
-from backend.models import OrderRequest, OrdProdLink, Product, UsersProfile
+from backend.models import OrderRequest, OrdProdLink, Users, UsersProfile, Product
 from django.db.models import Q
 from django.core.exceptions import ObjectDoesNotExist
 import secrets
 
 
 
-
+'''
+Order Request Proccessing
+'''
 @api_view(['POST'])
 @permission_classes([HasValidTokenForUser])
 def order_request(request):
@@ -57,11 +59,68 @@ def order_request(request):
         return Response({'error': e}, status=status.HTTP_404_NOT_FOUND)
 
     
+'''
+This is for the farmer he gets his incomming orders list.
+'''
 @api_view(['POST'])
 @permission_classes([HasValidTokenForUser])
-def see_all_orders(request):
+def all_incomming_orders_for_farmer(request):
+
     user = request.headers.get('userid')
 
     data = request.data
 
-    #user_type = Users.objects.get(user_id=user, profile_
+    user_type = Users.objects.get(user_id=user).profile_id.user_type
+
+    if user_type.lower() in ['consumer' , 'verifiedconsumer']:
+        return Response({'error': 'You are not a farmer.This is for only farmers'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    if user_type.lower() in ['farmer', 'verifiedfarmer']:
+        try:
+            # product IDs for this farmer
+            products = Product.objects.filter(user_id=user).values_list('p_id', flat=True)
+            '''
+            flat=true means with example?
+            
+            '''
+            # distinct order IDs linked to those products
+            orders = OrdProdLink.objects.filter(p_id__in=products).values_list('order_id', flat=True).distinct()
+
+            # consumer IDs for those orders
+            consumers = OrderRequest.objects.filter(order_id__in=orders).values_list('consumer_id', flat=True)
+
+            # consumer names via UsersProfile
+            profiles = UsersProfile.objects.filter(
+                pk__in=Users.objects.filter(user_id__in=consumers).values_list("profile_id", flat=True)
+            )
+            consumer_names = [profile.get_Full_Name for profile in profiles]
+
+            # total costs and ordered dates
+            total_costs = list(OrderRequest.objects.filter(order_id__in=orders).values_list('total_cost', flat=True))
+            ordered_dates = list(OrderRequest.objects.filter(order_id__in=orders).values_list('ordered_date', flat=True))
+
+            return Response({
+                'orders': list(orders),
+                'consumers': list(consumers),
+                'consumer_names': consumer_names,
+                'total_costs': total_costs,
+                'ordered_dates': ordered_dates
+                }, status=status.HTTP_200_OK)
+
+        except ObjectDoesNotExist:
+            return Response({'error': 'No orders found!'}, status=status.HTTP_404_NOT_FOUND)
+        
+    return Response({'error': 'Bad Request!'}, status=status.HTTP_400_BAD_REQUEST)
+   
+
+
+'''
+This is for the consumer he gets his orders list.
+'''
+@api_view(['POST'])
+@permission_classes([HasValidTokenForUser])
+def all_consumer_orders(request):
+
+
+
+    return Response({'error': 'Bad Request!'}, status=status.HTTP_400_BAD_REQUEST)

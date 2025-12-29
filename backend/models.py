@@ -35,8 +35,17 @@ class UsersProfile(models.Model):
 		ward = self.ward
 		tole = self.tole
 		return f"{municipal}-{ward} {tole}, {district}, {province}"
+	
 
-
+	@property
+	def get_Full_Name(self):
+		middle_name = self.m_name
+		if middle_name != None:
+			full_name = f"{self.f_name} {middle_name} {self.l_name}"
+		else:
+			full_name = f"{self.f_name} {self.l_name}"
+		return full_name
+	
 
 	def __str__(self):
 		return f"{self.f_name} {self.l_name}"
@@ -235,7 +244,6 @@ class OrderRequest(models.Model):
 		)
 		return order_id
 		
-	
 
 	def __str__(self):
 		return f"Order {self.order_id}: {self.order_status}"
