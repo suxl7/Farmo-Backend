@@ -1,12 +1,13 @@
 from django.utils import timezone
 from datetime import timedelta
 from rest_framework import status
-from backend.models import UserActivity
+from backend.models import UserActivity, UsersProfile
 from rest_framework.decorators import api_view, permission_classes
 from backend.permissions import ConnectionOnly
 from rest_framework.response import Response
 from backend.models import Users
 from backend.permissions import HasValidTokenForUser
+from django.core.exceptions import ObjectDoesNotExist
 
 
 @api_view(['POST'])
@@ -49,3 +50,24 @@ def get_online_status(request):
         status = "offline"
 
     return Response({"status": status})
+
+
+@api_view(['POST'])
+@permission_classes([HasValidTokenForUser])
+def get_address(request):
+    """Get the address for an order"""
+    user = request.headers.get('userid')
+    address_of = request.data.get('address_of')
+    user_id = request.data.get('userid') if request.data.get('userid') else None
+
+    try:
+        if address_of.lower() == 'consumer':
+            address = UsersProfile.objects.get(user_id=user).get_Address()
+        elif address_of.lower() in  ['farmer', 'seller', 'admin']:
+            address = UsersProfile.objects.get(user_id=user_id).get_Address()
+        
+
+        return Response({'address': address}, status=status.HTTP_200_OK)
+    
+    except ObjectDoesNotExist:
+        return Response({'error': 'User not found!'}, status=status.HTTP_404_NOT_FOUND)

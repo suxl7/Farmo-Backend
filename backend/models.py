@@ -27,6 +27,16 @@ class UsersProfile(models.Model):
 	join_date = models.DateTimeField(default=timezone.now)
 	about = models.CharField(max_length=50, blank=True, null=True)
 
+	@property
+	def get_Address(self):
+		province = self.province
+		district = self.district
+		municipal = self.municipal
+		ward = self.ward
+		tole = self.tole
+		return f"{municipal}-{ward} {tole}, {district}, {province}"
+
+
 
 	def __str__(self):
 		return f"{self.f_name} {self.l_name}"
@@ -88,17 +98,6 @@ class Wallet(models.Model):
 		self.pin = make_password(new_pin)
 		self.save(update_fields=['pin'])
 	
-	@receiver(post_save, sender='backend.Users')
-	def create_user_wallet(sender, instance, created, **kwargs):
-		"""Automatically create a wallet when a new user is created"""
-		if created and instance.is_admin == False:
-			Wallet.objects.create(
-				wallet_id=f"wallet_{instance.user_id}",
-				user_id=instance,
-				amount=0.00,
-				created_date=timezone.now(),
-				is_active=False
-			)
 
 	def __str__(self):
 		return f"Wallet {self.wallet_id}: {self.amount}"
@@ -216,14 +215,30 @@ class OrderRequest(models.Model):
 	"""OrderRequest model for customer orders"""
 	order_id = models.CharField(max_length=50, primary_key=True)
 	consumer_id = models.ForeignKey(Users, on_delete=models.PROTECT)
-	order_date = models.DateTimeField(default=timezone.now)
+	ordered_date = models.DateTimeField(default=timezone.now)
 	total_cost = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
 	order_status = models.CharField(max_length=20, default='PENDING') # Accepted, Rejected
 	shipping_address = models.TextField(blank=True, null=True)
 	expected_delivery_date = models.DateField(blank=True, null=True)
 
+	@classmethod
+	def create_order(cls, consumer_id, total_cost, shipping_address, expected_delivery_date):
+		order_id = secrets.token_hex(16).upper()
+		cls.objects.create(
+			order_id=order_id,
+			consumer_id=consumer_id,
+			ordered_date=timezone.now(),
+			total_cost=total_cost,
+			order_status='PENDING',
+			shipping_address=shipping_address,
+			expected_delivery_date=expected_delivery_date
+		)
+		return order_id
+		
+	
+
 	def __str__(self):
-		return f"Order {self.order_id}: {self.fullfilment_status}"
+		return f"Order {self.order_id}: {self.order_status}"
 
 
 class OrdProdLink(models.Model):
@@ -231,7 +246,17 @@ class OrdProdLink(models.Model):
 	order_id = models.ForeignKey(OrderRequest, on_delete=models.PROTECT)
 	p_id = models.ForeignKey(Product, on_delete=models.PROTECT)
 	quantity = models.IntegerField()
-	price_at_sale = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+	cost_per_unit = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+
+	@classmethod
+	def create_OrderProdLink(cls, order_id, p_id, quantity, cost_per_unit):
+		cls.objects.create(	
+			order_id=order_id,
+			p_id=p_id,
+			quantity=quantity,
+			cost_per_unit=cost_per_unit
+		)
+		return True if cls.objects.filter(order_id=order_id, p_id=p_id).exists() else False
 
 	class Meta:
 		unique_together = ('order_id', 'p_id')

@@ -218,14 +218,13 @@ def verify_wallet_pin(request):
 @permission_classes([HasValidTokenForUser])
 def logout(request):
     """Logout user by deactivating current token"""
-    auth_header = request.META.get('HTTP_AUTHORIZATION', '')
-    parts = auth_header.split()
+    auth_header = request.headers.get("Authorization")
     
-    if len(parts) != 2 or parts[0].lower() != 'bearer':
-        return Response({'error': 'Token is not provided.'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    token = parts[1]
-    
+
+    if not auth_header or not auth_header.startswith("token "):
+        return False
+
+    token = auth_header.split()[1]
     try:
         token_obj = Tokens.objects.get(token=token)
         token_obj.deactivate()
@@ -240,13 +239,13 @@ def logout(request):
 @permission_classes([HasValidTokenForUser])
 def logout_all_devices(request):
     """Logout user from all devices by deactivating all tokens"""
-    auth_header = request.META.get('HTTP_AUTHORIZATION', '')
-    parts = auth_header.split()
+    auth_header = request.headers.get("Authorization")
     
-    if len(parts) != 2 or parts[0].lower() != 'bearer':
-        return Response({'error': 'Token is not provided.'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    token = parts[1]
+
+    if not auth_header or not auth_header.startswith("token "):
+        return False
+
+    token = auth_header.split()[1]
     
     try:
         token_obj = Tokens.objects.get(token=token)

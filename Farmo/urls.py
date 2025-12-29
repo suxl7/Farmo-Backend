@@ -19,10 +19,10 @@ from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
 from backend.service_frontend.authentication import login, verify_wallet_pin, login_with_token, logout, logout_all_devices
-from backend.service_frontend.servicesActivity import get_online_status, check_userid_available
+from backend.service_frontend.servicesActivity import get_online_status, check_userid_available, get_address
 from backend.service_frontend.userProfile import register, verification_request, update_profile_picture
 from backend.service_frontend.servicesProfile import view_profile
-from backend.service_frontend.orders import get_farmer_orders
+from backend.service_frontend.orders import order_request
 
 
 urlpatterns = [
@@ -38,7 +38,8 @@ urlpatterns = [
     path('api/user/online-status/', get_online_status, name='get_online_status'),
     path('api/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin'),
     path('api/user/profile/', view_profile, name='view_profile'),
-    path('api/farmer/orders/', get_farmer_orders, name='get_farmer_orders')
+    path('api/farmer/order-request/', order_request, name='order_request'),
+    path('api/user/address/', get_address, name='get_address')
 ]
 
 # Serve media files during development

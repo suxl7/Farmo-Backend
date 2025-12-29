@@ -13,3 +13,8 @@ class BackendConfig(AppConfig):
     def ready(self):
         from django.contrib.auth.management import create_permissions
         post_migrate.disconnect(create_permissions, dispatch_uid="django.contrib.auth.management.create_permissions")
+        import backend.signals
+        
+        
+
+ 
