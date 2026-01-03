@@ -7,7 +7,8 @@ from backend.utils.media_handler import FileManager
 from django.db.models import Q  
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-import mimetypes
+#import mimetypes
+import secrets
 
 
 
@@ -46,32 +47,38 @@ def add_products(request):
     if len(videos) > 1:
         return Response({'error': 'Maximum 1 video allowed'}, status=status.HTTP_400_BAD_REQUEST)
     
-    pid = Product.create_product(
-        user_id=user,
-        name=name,
-        category=category,
-        is_organic=is_organic,
-        quantity_available=quantity_available,
-        cost_per_unit=cost_per_unit,
-        produced_date=produced_date,
-        expiry_Date=expiry_Date,
-        description=description,
-        delivery_option=delivery_option
-    )
+    created = False
+    while created:
+        pid = secrets.token_hex(16).upper()
+        created = Product.create_product(
+            pid=pid,
+            user_id=user,
+            name=name,
+            category=category,
+            is_organic=is_organic,
+            quantity_available=quantity_available,
+            cost_per_unit=cost_per_unit,
+            produced_date=produced_date,
+            expiry_Date=expiry_Date,
+            description=description,
+            delivery_option=delivery_option
+        )
     
     # Save media files
     file_manager = FileManager(user.user_id)
-    product_obj = Product.objects.get(P_id=pid)
+    #product_obj = Product.objects.get(P_id=pid)
     
     for photo in photos:
         result = file_manager.save_product_file(photo, pid, 'img', max_size_mb=5)
         if result['success']:
-            ProductMedia.create_media(product_obj, result['file_url'], 'image')
+            while  created:
+                created = ProductMedia.create_media(pid, result['file_url'], 'image')
     
     for video in videos:
         result = file_manager.save_product_file(video, pid, 'vid', max_size_mb=50)
         if result['success']:
-            ProductMedia.create_media(product_obj, result['file_url'], 'video')
+            while  created:
+                created = ProductMedia.create_media(pid, result['file_url'], 'video')
     
     return Response({
         'message': 'Product created successfully',

@@ -22,9 +22,7 @@ def order_request(request):
 
     expected_delivery_date = data.get('expected_delivery_date') 
     shipping_address = data.get('shipping_address')
-    ordered_date = data.get('ordered_date')
     total_cost = data.get('total_cost')
-    order_status = 'PENDING'
     product_id = data.get('product_id', [])
     quantity = data.get('quantity', [])
     cost_per_unit = data.get('cost_per_unit', [])
@@ -70,6 +68,8 @@ def all_incomming_orders_for_farmer(request):
 
     data = request.data
 
+    order_status = data.get('order_status')
+
     user_type = Users.objects.get(user_id=user).profile_id.user_type
 
     if user_type.lower() in ['consumer' , 'verifiedconsumer']:
@@ -79,15 +79,15 @@ def all_incomming_orders_for_farmer(request):
         try:
             # product IDs for this farmer
             products = Product.objects.filter(user_id=user).values_list('p_id', flat=True)
-            '''
-            flat=true means with example?
-            
-            '''
+
             # distinct order IDs linked to those products
             orders = OrdProdLink.objects.filter(p_id__in=products).values_list('order_id', flat=True).distinct()
-
-            # consumer IDs for those orders
-            consumers = OrderRequest.objects.filter(order_id__in=orders).values_list('consumer_id', flat=True)
+            
+            if order_status.lower() == 'all':  
+                # consumer IDs for those orders
+                consumers = OrderRequest.objects.filter(order_id__in=orders).values_list('consumer_id', flat=True)
+            else:
+                consumers = OrderRequest.objects.filter(order_id__in=orders, order_status=order_status).values_list('consumer_id', flat=True)
 
             # consumer names via UsersProfile
             profiles = UsersProfile.objects.filter(
@@ -115,12 +115,88 @@ def all_incomming_orders_for_farmer(request):
 
 
 '''
-This is for the consumer he gets his orders list.
+This is for the consumer he gets his ordered products list.
 '''
 @api_view(['POST'])
 @permission_classes([HasValidTokenForUser])
 def all_consumer_orders(request):
 
+    user = request.headers.get('userid')
+    data = request.data
+    order_status = data.get('order_status')
 
+    try:
+        orders = OrderRequest.objects.filter(consumer_id=user, order_status=order_status).values_list('order_id', flat=True)
+        ordered_date = OrderRequest.objects.filter(order_id__in=orders).values_list('ordered_date', flat=True)
+        price = OrderRequest.objects.filter(order_id__in=orders).values_list('total_cost', flat=True)
+        #products_id = OrdProdLink.objects.filter(order_id__in=orders).values_list('p_id', flat=True)
+        p_id = []
+        product_name = []
+        for i in range(len(orders)):
+            p_id[i] = OrdProdLink.objects.filter(order_id=orders[i]).values_list('p_id', flat=True)
+            if len(p_id[i]) == 1:
+                product_name[i] = Product.objects.filter(p_id=p_id[i][0]).values_list('name', flat=True)
+        
+            elif len(p_id[i]) >= 2:
+                product_name[i] = Product.objects.filter(p_id=p_id[i][0]).values_list('name', flat=True)
+                product_name[i] = product_name[i].append(Product.objects.filter(p_id=p_id[i][1]).values_list('name', flat=True))
+                if len(p_id[i]) > 2:
+                   product_name[i] = product_name[i].append("and other items.")
 
-    return Response({'error': 'Bad Request!'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+                'orders': list(orders),
+                'ordered_date': list(ordered_date),
+                'price': list(price),
+                'product_name': list(product_name)
+                }, status=status.HTTP_200_OK)  
+           
+    except ObjectDoesNotExist:
+        return Response({'error': 'No orders found!'}, status=status.HTTP_404_NOT_FOUND)
+    
+
+'''get order detail'''
+@api_view(['POST'])
+@permission_classes([HasValidTokenForUser])
+def get_order_detail(request):
+    """Get all orders for products belonging to the authenticated farmer"""
+    user = request.headers.get('userid')
+    data = request.data
+    order_id = data.get('order_id')
+
+    try:
+        order = OrderRequest.objects.get(order_id=order_id)
+        ordered_date = order.ordered_date
+        price = order.total_cost
+        products_id = OrdProdLink.objects.filter(order_id=order_id).values_list('p_id', flat=True)
+        product_quantity = OrdProdLink.objects.filter(order_id=order_id).values_list('quantity', flat=True)
+        product_cost_per_unit = OrdProdLink.objects.filter(order_id=order_id).values_list('cost_per_unit', flat=True)
+        product_name = []
+        for i in range(len(products_id)):
+            product_name[i] = Product.objects.filter(p_id=products_id[i]).values_list('name', flat=True)
+        
+        order_status = order.order_status
+        order_shipping_adderss = order.shipping_address
+        order_expected_delivery_date = order.expected_delivery_date
+        order_otp = order.ORDER_OTP
+
+        consumer_id = order.consumer_id
+        farmer_id = Product.objects.get(p_id=products_id[0]).values_list('user_id', flat=True) 
+
+        return Response({
+                'order_id': order_id,
+                'farmer_id': farmer_id,
+                'consumer_id': consumer_id,
+                'ordered_date': ordered_date,
+                'product_id': list(products_id),
+                'product_name': list(product_name),
+                'product_quantity': list(product_quantity),
+                'product_cost_per_unit': list(product_cost_per_unit),
+                'price': price,
+                'order_status': order_status,
+                'order_shipping_adderss': order_shipping_adderss,
+                'order_expected_delivery_date': order_expected_delivery_date,
+                'order_otp': order_otp
+                }, status=status.HTTP_200_OK)
+
+    except ObjectDoesNotExist:
+        return Response({'error': 'No orders found!'}, status=status.HTTP_404_NOT_FOUND)

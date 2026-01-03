@@ -4,6 +4,8 @@ from django.contrib.auth.hashers import make_password, check_password
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 import secrets
+from django.core.validators import MinValueValidator, MaxValueValidator
+
 
 class UsersProfile(models.Model):
 	"""User profile storing detailed user information"""
@@ -12,7 +14,8 @@ class UsersProfile(models.Model):
 	f_name = models.CharField(max_length=50)
 	m_name = models.CharField(max_length=50, blank=True, null=True)
 	l_name = models.CharField(max_length=50)
-	user_type = models.CharField(max_length=50)
+
+	user_type = models.CharField(max_length=50, default='Consumer')
 	province = models.CharField(max_length=50, blank=True, null=True)
 	district = models.CharField(max_length=50, blank=True, null=True)
 	municipal = models.CharField(max_length=50, blank=True, null=True)
@@ -45,16 +48,24 @@ class UsersProfile(models.Model):
 		else:
 			full_name = f"{self.f_name} {self.l_name}"
 		return full_name
-	
 
 	def __str__(self):
 		return f"{self.f_name} {self.l_name}"
+	
+	class Meta:
+		constraints = [
+			models.CheckConstraint(
+				condition=models.Q(user_type__in=['Consumer', 'Farmer', 'VerifiedConsumer', 'VerifiedFarmer', 'Admin', 'SuperAdmin']),
+				name='valid_user_type'
+			)
+		]
 
 class Users(models.Model):
 	"""User model storing basic user information"""
 	user_id = models.CharField(max_length=20, primary_key=True)
 	phone = models.CharField(max_length=15, blank=True)
 	password = models.CharField(max_length=128)
+
 	profile_status = models.CharField(max_length=20, default='ACTIVATED')
 	is_admin = models.BooleanField(default=False)
 	profile_id = models.ForeignKey(UsersProfile, on_delete=models.PROTECT)
@@ -75,6 +86,15 @@ class Users(models.Model):
 
 	def __str__(self):
 		return f"User {self.user_id}"
+	
+	
+	class Meta:
+		constraints = [
+			models.CheckConstraint(
+				condition=models.Q(profile_status__in=['PENDING', 'ACTIVATED', 'SUSPENDED', 'DELETED']),
+				name='valid_profile_status'
+			)
+		]
 
 
 class Wallet(models.Model):
@@ -85,10 +105,6 @@ class Wallet(models.Model):
 	pin = models.CharField(max_length=128)
 	created_date = models.DateTimeField(default=timezone.now)
 	is_active = models.BooleanField(default=False)
-
-	class Meta:
-		unique_together = ('wallet_id', 'user_id')
-	
 
 	def set_pin(self, raw_pin):
 		"""Hash the 4-digit PIN before saving"""
@@ -110,6 +126,10 @@ class Wallet(models.Model):
 
 	def __str__(self):
 		return f"Wallet {self.wallet_id}: {self.amount}"
+	
+	class Meta:
+		unique_together = ('wallet_id', 'user_id')
+	
 
 
 class Product(models.Model):
@@ -125,13 +145,13 @@ class Product(models.Model):
 	registered_at = models.DateTimeField(default=timezone.now)
 	expiry_Date = models.DateField(null=True, blank=True)
 	description = models.TextField(blank=True, null=True)
-	delivery_option = models.CharField(max_length=100, default='not-available')
-	product_status = models.CharField(max_length=100, default='AVAILABLE')
 
+	delivery_option = models.CharField(max_length=100, default='Not-Available')
+	product_status = models.CharField(max_length=100,  default='Available')
+	
 	@classmethod
-	def create_product(cls, user_id, name, category, is_organic, quantity_available, cost_per_unit, produced_date, expiry_Date, description, delivery_option):
+	def create_product(cls, pid, user_id, name, category, is_organic, quantity_available, cost_per_unit, produced_date, expiry_Date, description, delivery_option):
 		"""Create a new product"""
-		pid = secrets.token_hex(10).upper()
 		cls.objects.create(
 			p_id= pid,
 			user_id=user_id,
@@ -147,11 +167,20 @@ class Product(models.Model):
 			delivery_option	=delivery_option,
 			product_status='AVAILABLE'
 		)
-		return pid
+		return True if cls.objects.filter(p_id=pid).exists() else False
+
 
 	def __str__(self):
 		return f"{self.name} ({self.p_id})"
 	
+	class Meta:
+		constraints = [
+			models.CheckConstraint(
+				condition=models.Q(delivery_option__in=['Not-Available', 'Available']) & models.Q(product_status__in=['Available', 'Sold', 'Expired']),
+				name='valid_product_status_delivery_option'
+			)
+		]
+
 
 class ProductMedia(models.Model):
 	"""ProductMedia model for product images and videos"""
@@ -174,38 +203,62 @@ class ProductMedia(models.Model):
 
 	def __str__(self):
 		return f"Media {self.media_id}"
+	
+	class Meta:
+		constraints = [
+			models.CheckConstraint(
+				condition=models.Q(media_type__in=['image', 'video']),
+				name='valid_media_type'
+			)
+		]
 
 
 class ProductRating(models.Model):
 	"""ProductRating model for product reviews and ratings"""
-	PRating_id = models.CharField(max_length=50, primary_key=True)
+	ProductRating_id = models.CharField(max_length=50, primary_key=True)
 	p_id = models.ForeignKey(Product, on_delete=models.PROTECT)
 	consumer_id = models.ForeignKey(Users, on_delete=models.PROTECT)
-	score = models.IntegerField()
+	score = models.IntegerField(validators=[MinValueValidator(1),MaxValueValidator(10)]
+)
 	comment = models.TextField()
 	date = models.DateTimeField(default=timezone.now)
 
 	def __str__(self):
-		return f"Rating {self.PRating_id}: {self.score}"
+		return f"ProductRating {self.ProductRating_id}: {self.score}"
 
 
-class FarmerRating(models.Model):
+class Rating(models.Model):
 	"""FarmerRating model for farmer reviews by consumers"""
-	r_id = models.CharField(max_length=50, primary_key=True)
+	FarmerRate_id = models.CharField(max_length=50, primary_key=True)
 	farmer_id = models.ForeignKey(Users, on_delete=models.PROTECT, related_name='Farmer')
 	consumer_id = models.ForeignKey(Users, on_delete=models.PROTECT, related_name='Consumer')
-	score = models.IntegerField()
+	score = models.IntegerField(validators=[
+            MinValueValidator(1),
+            MaxValueValidator(10)
+        ])
 	comment = models.TextField()
+	
+	rated_by = models.CharField(max_length=50, default='Consumer') #
+	
 	date = models.DateTimeField(default=timezone.now)
 
 	def __str__(self):
-		return f"FarmerRating {self.R_id}: {self.score}"
+		return f"Rating {self.FarmerRate_id}: {self.score}"
+	
+	class Meta:
+		constraints = [
+			models.CheckConstraint(
+				condition=models.Q(rated_by__in=['Farmer', 'Consumer']),
+				name='valid_rated_by'
+			)
+		]
 
 
 class Verification(models.Model):
 	"""Verification model for user identity verification"""
 	V_id = models.CharField(max_length=50, primary_key=True)
 	user_id = models.ForeignKey(Users, on_delete=models.PROTECT)
+
 	status = models.CharField(max_length=20, default='Pending')
 	id_Type = models.CharField(max_length=50, blank=True, null=True)
 	id_Number = models.CharField(max_length=50, blank=True, null=True)
@@ -216,8 +269,18 @@ class Verification(models.Model):
 	approved_date = models.DateTimeField(blank=True, null=True)
 	approved_by = models.CharField(max_length=50, blank=True, null=True)
 
+
+
 	def __str__(self):
 		return f"Verification {self.V_id}: {self.status}"
+	
+	class Meta:
+		constraints = [
+			models.CheckConstraint(
+				condition=models.Q(status__in=['PENDING', 'VERIFIED', 'REJECTED']),
+				name='valid_status'
+			)
+		]
 
 
 class OrderRequest(models.Model):
@@ -226,9 +289,12 @@ class OrderRequest(models.Model):
 	consumer_id = models.ForeignKey(Users, on_delete=models.PROTECT)
 	ordered_date = models.DateTimeField(default=timezone.now)
 	total_cost = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+
 	order_status = models.CharField(max_length=20, default='PENDING') # Accepted, Rejected
 	shipping_address = models.TextField(blank=True, null=True)
 	expected_delivery_date = models.DateField(blank=True, null=True)
+	ORDER_OTP = models.CharField(max_length=6, blank=True, null=True)
+
 
 	@classmethod
 	def create_order(cls, consumer_id, total_cost, shipping_address, expected_delivery_date):
@@ -240,13 +306,22 @@ class OrderRequest(models.Model):
 			total_cost=total_cost,
 			order_status='PENDING',
 			shipping_address=shipping_address,
-			expected_delivery_date=expected_delivery_date
+			expected_delivery_date=expected_delivery_date,
+			ORDER_OTP=secrets.token_hex(6).upper()
 		)
 		return order_id
 		
 
 	def __str__(self):
 		return f"Order {self.order_id}: {self.order_status}"
+	
+	class Meta:
+		constraints = [
+			models.CheckConstraint(
+				condition=models.Q(order_status__in=['PENDING', 'ACCEPTED', 'REJECTED']),
+				name='valid_order_status'
+			)
+		]
 
 
 class OrdProdLink(models.Model):
@@ -266,11 +341,12 @@ class OrdProdLink(models.Model):
 		)
 		return True if cls.objects.filter(order_id=order_id, p_id=p_id).exists() else False
 
-	class Meta:
-		unique_together = ('order_id', 'p_id')
-
 	def __str__(self):
 		return f"{self.quantity} x Product {self.P_id} in order {self.order_id}"
+	
+	
+	class Meta:
+		unique_together = ('order_id', 'p_id')
 	
 
 class Transaction(models.Model):
@@ -283,8 +359,18 @@ class Transaction(models.Model):
 	status = models.CharField(max_length=20, default='PENDING')
 	transaction_date = models.DateTimeField(default=timezone.now)
 
+
 	def __str__(self):
 		return f"Transaction {self.transaction_id}: {self.amount}"
+	
+	
+	class Meta:
+		constraints = [
+			models.CheckConstraint(
+				condition=models.Q(status__in=['PENDING', 'SUCCESSFUL', 'FAILED']),
+				name='valid_status_transaction'
+			)
+		]
 
 
 class Tokens(models.Model):
@@ -345,6 +431,14 @@ class Tokens(models.Model):
 	
 	def __str__(self):
 		return f"Token for {self.user_id}"
+	
+	class Meta:
+		constraints = [
+			models.CheckConstraint(
+				condition=models.Q(token_status__in=['ACTIVE', 'INACTIVE', 'SUSPENDED']),
+				name='valid_token_status'
+			)
+		]
 
 
 class UserActivity(models.Model):
@@ -373,11 +467,21 @@ class Connections(models.Model):
     connection_id = models.AutoField(primary_key=True)
     user = models.ForeignKey(Users, on_delete=models.CASCADE, related_name="connections")
     target_user = models.ForeignKey(Users, on_delete=models.CASCADE, related_name="connected_to")
-    status = models.CharField(max_length=20, default="PENDING")  # PENDING, ACCEPTED, BLOCKED
+    status = models.CharField(max_length=20, default="PENDING")
     created_at = models.DateTimeField(default=timezone.now)
-	
-    class Meta: # Means that a user cannot have multiple connection records with the same target user
-        unique_together = ("user", "target_user")
-
+    
     def __str__(self):
         return f"{self.user.user_id} -> {self.target_user.user_id} ({self.status})"
+	
+	
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(status__in=['PENDING', 'ACCEPTED', 'BLOCKED']),
+                name='valid_status_connection'
+            ),
+			models.UniqueConstraint(
+                fields=['user', 'target_user'], 
+                name='unique_user_connection'
+            )
+        ]
