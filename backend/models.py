@@ -147,10 +147,10 @@ class Product(models.Model):
     description = models.TextField(blank=True, null=True)
     delivery_option = models.CharField(max_length=100, default='Not-Available')
     product_status = models.CharField(max_length=100,  default='Available')
-    payment_method_accepted = models.JSONField(max_length=100, default=[{'wallet': True, 'cod': False, 'khalti': False, 'esewa': False}])
+    
 
     @classmethod
-    def create_product(cls, pid, user_id, name, category, is_organic, quantity_available, cost_per_unit, produced_date, expiry_Date, description, delivery_option, paymentMethod):
+    def create_product(cls, pid, user_id, name, category, is_organic, quantity_available, cost_per_unit, produced_date, expiry_Date, description, delivery_option):
         """Create a new product"""
         cls.objects.create(
             p_id= pid,
@@ -165,8 +165,7 @@ class Product(models.Model):
             expiry_Date=expiry_Date,
             description=description,
             delivery_option	=delivery_option,
-            product_status='AVAILABLE',
-            payment_method_accepted= paymentMethod
+            product_status='AVAILABLE'
         )
         return True if cls.objects.filter(p_id=pid).exists() else False
 
@@ -179,10 +178,7 @@ class Product(models.Model):
             models.CheckConstraint(
                 condition=models.Q(delivery_option__in=['Not-Available', 'Available']) & models.Q(product_status__in=['Available', 'Sold', 'Expired']),
                 name='valid_product_status_delivery_option'
-            ),
-            models.CheckConstraint(
-                condition=models.Q(payment_method_accepted__in=['Wallet', 'COD', 'KHALTI', 'ESewa']),
-                name='valid_payment_method_accepted')
+            )
         ]
 
 
@@ -504,3 +500,18 @@ class Connections(models.Model):
                 name='unique_user_connection'
             )
         ]
+
+
+class PaymentMethodAccepts(models.Model):
+    """Track accepted payment methods for each user"""
+    pm_id = models.AutoField(primary_key=True)
+    user_id = models.ForeignKey(Users, on_delete=models.CASCADE)
+    payment_method = models.JSONField(max_length=50, default=list, blank=True) # e.g. WALLET, COD, KHALTI, ESEWA
+
+    @property
+    def get_payment_methods(self):
+        """Get the list of accepted payment methods for this user"""
+        return self.payment_method
+    
+    def __str__(self):
+        return f"{self.user_id} - {self.payment_method} ({'Active' if self.is_active else 'Inactive'})"

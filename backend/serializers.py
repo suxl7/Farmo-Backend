@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from .models import (
     Users, UsersProfile, Wallet, Transaction, Product, ProductMedia,
-    ProductRating, Rating, Verification, OrderRequest, OrdProdLink, Tokens, UserActivity, Connections)
+    ProductRating, Rating, Verification, OrderRequest, OrdProdLink, Tokens, UserActivity, Connections, PaymentMethodAccepts)
 
 
 class UsersSerializer(serializers.ModelSerializer):
@@ -132,4 +132,9 @@ class ConnectionSerializer(serializers.ModelSerializer):
         model = Connections
         fields = '__all__'
 
+class PaymentMethodAcceptsSerializer(serializers.ModelSerializer):
+    """Serializer for PaymentMethodAccepted model"""
+    class Meta:
+        model = PaymentMethodAccepts
+        fields = '__all__'
 

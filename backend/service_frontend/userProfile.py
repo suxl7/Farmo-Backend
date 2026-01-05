@@ -3,7 +3,7 @@ from rest_framework.permissions import AllowAny
 from backend.permissions import HasValidTokenForUser
 from rest_framework.response import Response
 from rest_framework import status
-from backend.models import Users, UsersProfile, UserActivity
+from backend.models import Users, UsersProfile, UserActivity, PaymentMethodAccepts
 import secrets
 from django.utils import timezone
 from django.utils.crypto import get_random_string
@@ -21,6 +21,7 @@ def register(request):
         password = get_random_string(length=8)
     else:
         password = request.data.get('password')
+
     f_name = request.data.get('f_name') # required
     m_name = request.data.get('m_name', None) # optional
     l_name = request.data.get('l_name')
@@ -233,3 +234,61 @@ def update_profile_picture(request):
     return Response({
         'message': 'Profile picture updated successfully.'
     }, status=status.HTTP_200_OK)
+
+@api_view(['PUT'])
+@permission_classes([HasValidTokenForUser])
+def add_payment_method(request):
+    # safer way: request.headers not request.header
+    user_id = request.headers.get('user_id')
+    payment_method = request.data.get('payment_method')
+
+    if not user_id or not payment_method:
+        return Response({
+            'error': 'user_id and payment_method are required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        # create or update payment method record
+        pm_obj, created = PaymentMethodAccepts.objects.update_or_create(
+            pm_id=f"{user_id}-payment-method",
+            defaults={
+                "user_id": user_id,
+                "payment_method": payment_method
+            }
+        )
+
+        return Response({
+            'message': 'Payment method saved successfully',
+            'data': {
+                'pm_id': pm_obj.pm_id,
+                'created': created
+            }
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({
+            'error': str(e)
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+
+@api_view(['PUT'])
+@permission_classes([HasValidTokenForUser])
+def get_payment_method(request):
+    user_id = request.headers.get('user_id')
+    if not user_id:
+        return Response({
+            'error': 'user_id is required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        pm_obj = PaymentMethodAccepts.objects.get(user_id=user_id)
+        pm_obj.get_payment_methods()
+        return Response({
+            'pm_id': pm_obj.pm_id,
+            'payment_method': pm_obj.get_payment_methods()  
+        }, status=status.HTTP_200_OK)
+    
+    except PaymentMethodAccepts.DoesNotExist:
+        return Response({
+            'error': 'Payment method not found'
+        }, status=status.HTTP_404_NOT_FOUND)

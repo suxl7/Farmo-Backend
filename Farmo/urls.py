@@ -20,9 +20,9 @@ from django.conf import settings
 from django.conf.urls.static import static
 from backend.service_frontend.authentication import login, verify_wallet_pin, login_with_token, logout, logout_all_devices
 from backend.service_frontend.servicesActivity import get_online_status, check_userid_available, get_address
-from backend.service_frontend.userProfile import register, verification_request, update_profile_picture
+from backend.service_frontend.userProfile import register, verification_request, update_profile_picture, get_payment_method, add_payment_method
 from backend.service_frontend.servicesProfile import view_profile
-from backend.service_frontend.orders import order_request
+from backend.service_frontend.orders import order_request, get_order_detail, all_incomming_orders_for_farmer, all_consumer_orders
 
 
 urlpatterns = [
@@ -39,7 +39,12 @@ urlpatterns = [
     path('api/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin'),
     path('api/user/profile/', view_profile, name='view_profile'),
     path('api/farmer/order-request/', order_request, name='order_request'),
-    path('api/user/address/', get_address, name='get_address')
+    path('api/farmer/all-incomming-orders/', all_incomming_orders_for_farmer, name='all_incomming_orders_for_farmer'),
+    path('api/consumer/all-orders/', all_consumer_orders, name='all_consumer_orders'),
+    path('api/farmer/order-detail/', get_order_detail, name='get_order_detail'),
+    path('api/user/address/', get_address, name='get_address'),
+    path('api/user/payment-method/', add_payment_method, name='add_payment_method'),
+    path('api/user/get-payment-method/', get_payment_method, name='get_payment_method')
 ]
 
 # Serve media files during development

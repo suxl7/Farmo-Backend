@@ -26,7 +26,6 @@ def add_products(request):
     expired_at = request.data.get('expired_at')
     description = request.data.get('description')
     delivery_option = request.data.get('delivery_option')
-    payment_method_accepted = request.data.get('payment_method_accepted')
     
     media_files = request.FILES.getlist('media_files')
 
@@ -62,8 +61,7 @@ def add_products(request):
             produced_date=produced_date,
             expiry_Date=expiry_Date,
             description=description,
-            delivery_option=delivery_option,
-            payment_method_accepted=payment_method_accepted
+            delivery_option=delivery_option
         )
     
     # Save media files
