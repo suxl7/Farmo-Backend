@@ -26,6 +26,7 @@ def add_products(request):
     expired_at = request.data.get('expired_at')
     description = request.data.get('description')
     delivery_option = request.data.get('delivery_option')
+    payment_method_accepted = request.data.get('payment_method_accepted')
     
     media_files = request.FILES.getlist('media_files')
 
@@ -48,7 +49,7 @@ def add_products(request):
         return Response({'error': 'Maximum 1 video allowed'}, status=status.HTTP_400_BAD_REQUEST)
     
     created = False
-    while created:
+    while not created:
         pid = secrets.token_hex(16).upper()
         created = Product.create_product(
             pid=pid,
@@ -61,7 +62,8 @@ def add_products(request):
             produced_date=produced_date,
             expiry_Date=expiry_Date,
             description=description,
-            delivery_option=delivery_option
+            delivery_option=delivery_option,
+            payment_method_accepted=payment_method_accepted
         )
     
     # Save media files

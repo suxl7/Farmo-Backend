@@ -1,321 +1,161 @@
-# Custom Token Authentication System - Farmo Backend
+# Frontend Integration Guide for Farmo Backend
 
-## Overview
-This document describes the custom token-based authentication system implemented for the Farmo Django REST Framework project.
+This guide provides instructions for frontend developers (React and Android) on how to connect to the Farmo backend server.
 
-## Architecture
+## Running the Development Server
 
-### 1. Token Model (`backend/models.py`)
-The `Tokens` model stores authentication tokens with the following fields:
-- `user_id`: ForeignKey to Users model
-- `token`: Unique token string (32-byte URL-safe)
-- `refresh_token`: Refresh token string
-- `device_info`: Device information (optional)
-- `issued_at`: Token creation timestamp
-- `expires_at`: Token expiration timestamp
-- `token_status`: Token status (ACTIVE/INACTIVE)
+To start the backend server, run the following command in the project's root directory:
 
-#### Token Expiry Rules:
-- **Admin users**: 1 day
-- **Farmers/Consumers**: 40 days
-
-#### Class Method:
-```python
-Tokens.create_token(user, days=40)
-```
-Generates a random token with specified expiry days.
-
-### 2. Authentication Service (`backend/service_frontend/authentication.py`)
-
-#### Login Endpoint: `/api/auth/login/`
-**Method**: POST  
-**Permission**: AllowAny  
-**Request Body**:
-```json
-{
-  "identifier": "user_id or phone",
-  "password": "password",
-  "is_admin": false,
-  "device_info": "device details"
-}
-```
-
-**Success Response** (200):
-```json
-{
-  "login_access": true,
-  "token": "token_string",
-  "refresh_token": "refresh_token_string",
-  "user_id": "user_id"
-}
-```
-
-**Error Responses**:
-- 400: Missing credentials
-- 401: Invalid credentials
-- 403: Account pending/inactive
-
-#### Login with Token: `/api/auth/login-with-token/`
-**Method**: POST  
-**Permission**: AllowAny  
-**Request Body**:
-```json
-{
-  "token": "existing_token",
-  "refresh_token": "existing_refresh_token",
-  "user_id": "user_id",
-  "device_info": "device details"
-}
-```
-
-**Behavior**:
-- If token is valid and not expired: Returns same token
-- If token is expired: Generates new token pair
-- If token is invalid: Returns 401 error
-
-#### Token Management Rules:
-- Maximum 2 active tokens per user
-- When creating 3rd token, oldest token is deactivated
-- Tokens are device-specific
-
-### 3. Custom Authentication Class (`backend/auth.py`)
-
-#### `CustomTokenAuthentication`
-Extends `rest_framework.authentication.BaseAuthentication`
-
-**How it works**:
-1. Extracts token from `Authorization: Bearer <token>` header
-2. Validates token exists in database with ACTIVE status
-3. Checks token expiry date
-4. Returns `(user, None)` if valid
-5. Raises `AuthenticationFailed` if invalid or expired
-
-**Usage**: Automatically applied to all views via `settings.py`
-
-### 4. Settings Configuration (`Farmo/settings.py`)
-
-```python
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'backend.auth.CustomTokenAuthentication',
-    ],
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
-    ],
-}
-```
-
-This configuration:
-- Applies token authentication to ALL endpoints by default
-- Requires authentication for ALL endpoints by default
-- Use `@permission_classes([AllowAny])` to make endpoints public
-
-### 5. Protected Views (`backend/views.py`)
-
-#### Example: Profile View
-```python
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def profile_view(request):
-    user = request.user  # Authenticated user available here
-    # ... view logic
-```
-
-**Available Protected Endpoints**:
-- `/api/user/profile/` - Get user profile
-- `/api/protected/` - Example protected endpoint
-- `/api/wallet/verify-pin/` - Verify wallet PIN
-- `/api/user/update-profile-picture/` - Update profile picture
-- `/api/user/verification-request/` - Submit verification documents
-- `/api/user/online-status/` - Get user online status
-
-## Client Usage
-
-### 1. Login Flow
-```javascript
-// Step 1: Login
-const response = await fetch('/api/auth/login/', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    identifier: 'user123',
-    password: 'password',
-    is_admin: false,
-    device_info: 'Chrome/Windows'
-  })
-});
-
-const data = await response.json();
-// Store token and refresh_token
-localStorage.setItem('token', data.token);
-localStorage.setItem('refresh_token', data.refresh_token);
-localStorage.setItem('user_id', data.user_id);
-```
-
-### 2. Making Authenticated Requests
-```javascript
-const token = localStorage.getItem('token');
-
-const response = await fetch('/api/user/profile/', {
-  method: 'GET',
-  headers: {
-    'Authorization': `Bearer ${token}`
-  }
-});
-```
-
-### 3. Remember Me (Auto-login)
-```javascript
-const token = localStorage.getItem('token');
-const refresh_token = localStorage.getItem('refresh_token');
-const user_id = localStorage.getItem('user_id');
-
-const response = await fetch('/api/auth/login-with-token/', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    token,
-    refresh_token,
-    user_id,
-    device_info: 'Chrome/Windows'
-  })
-});
-
-const data = await response.json();
-if (data.login_access) {
-  // Update tokens if new ones were issued
-  if (data.token !== token) {
-    localStorage.setItem('token', data.token);
-    localStorage.setItem('refresh_token', data.refresh_token);
-  }
-}
-```
-
-## Security Features
-
-### 1. Token Security
-- Tokens are 32-byte URL-safe random strings
-- Stored hashed in database (via secrets.token_urlsafe)
-- Automatic expiry enforcement
-- Device-specific tokens
-
-### 2. Password Security
-- Passwords hashed using Django's `make_password`
-- Verified using `check_password`
-- Never stored in plain text
-
-### 3. Wallet PIN Security
-- 4-digit PINs hashed using Django's `make_password`
-- Verified using `check_password`
-- Separate from user password
-
-### 4. Rate Limiting
-```python
-'DEFAULT_THROTTLE_RATES': {
-    'anon': '100/hour',
-    'user': '1000/hour'
-}
-```
-
-## Error Handling
-
-### Authentication Errors
-- **Invalid token**: 401 Unauthorized
-- **Token expired**: 401 Unauthorized
-- **Missing token**: 401 Unauthorized
-- **Account inactive**: 403 Forbidden
-- **Account pending**: 403 Forbidden
-
-### Common Error Codes
-- `MISSING_CREDENTIALS`: Required fields missing
-- `INVALID_CREDENTIALS`: Wrong username/password
-- `ACCOUNT_PENDING`: Account awaiting approval
-- `ACCOUNT_INACTIVE`: Account deactivated
-- `INVALID_TOKENS`: Token not found or invalid
-
-## Database Schema
-
-### Tokens Table
-```sql
-CREATE TABLE backend_tokens (
-    id BIGSERIAL PRIMARY KEY,
-    user_id_id VARCHAR(20) REFERENCES backend_users(user_id),
-    token TEXT NOT NULL,
-    refresh_token TEXT,
-    device_info VARCHAR(255),
-    issued_at TIMESTAMP DEFAULT NOW(),
-    expires_at TIMESTAMP NOT NULL,
-    token_status VARCHAR(20) DEFAULT 'ACTIVE'
-);
-```
-
-## Testing
-
-### Test Login
 ```bash
-curl -X POST http://localhost:8000/api/auth/login/ \
-  -H "Content-Type: application/json" \
-  -d '{
-    "identifier": "user123",
-    "password": "password",
-    "is_admin": false,
-    "device_info": "curl"
-  }'
+python manage.py runserver
 ```
 
-### Test Protected Endpoint
-```bash
-curl -X GET http://localhost:8000/api/user/profile/ \
-  -H "Authorization: Bearer <your_token>"
+By default, the server will be accessible at `http://127.0.0.1:8000`.
+
+## Connecting from Different Devices on the Same Network
+
+To connect to the development server from a different device (e.g., a mobile phone for Android development) on the same network, you need to:
+
+1.  **Find your computer's local IP address.**
+    *   **Windows:** Open Command Prompt and type `ipconfig`. Look for the "IPv4 Address" under your active network adapter.
+    *   **macOS/Linux:** Open a terminal and type `ifconfig` or `ip a`. Look for the `inet` address.
+
+2.  **Add the IP address to `ALLOWED_HOSTS` in `Farmo/settings.py`.**
+
+    Open the `Farmo/settings.py` file and add your local IP address to the `ALLOWED_HOSTS` list. For example, if your IP is `192.168.1.10`, the file should look like this:
+
+    ```python
+    # Farmo/settings.py
+
+    ALLOWED_HOSTS = ['192.168.1.10', '127.0.0.1', 'localhost']
+    ```
+
+3.  **Use the IP address in your frontend application's API calls.**
+
+    Replace `127.0.0.1:8000` or `localhost:8000` with `<your-local-ip>:8000`. For example: `http://192.168.1.10:8000/api/auth/login/`.
+
+## API Endpoints
+
+Here are the key endpoints for authentication and core features:
+
+### Base URL
+
+*   **Same Device:** `http://127.0.0.1:8000`
+*   **Different Device:** `http://<your-local-ip>:8000` (replace `<your-local-ip>` with your actual IP)
+
+---
+
+### 1. User Signup
+
+*   **Endpoint:** `/api/auth/register/`
+*   **Method:** `POST`
+*   **Description:** Registers a new user.
+*   **Body (raw JSON):**
+    ```json
+    {
+        "user_id": "newuser",
+        "email": "user@example.com",
+        "password": "yourpassword",
+        "user_type": "farmer"
+    }
+    ```
+*   **React Example:**
+    ```javascript
+    fetch('http://127.0.0.1:8000/api/auth/register/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            user_id: 'newuser',
+            email: 'user@example.com',
+            password: 'yourpassword',
+            user_type: 'farmer', // or 'consumer'
+        }),
+    })
+    .then(response => response.json())
+    .then(data => console.log(data))
+    .catch(error => console.error('Error:', error));
+    ```
+
+### 2. User Login
+
+*   **Endpoint:** `/api/auth/login/`
+*   **Method:** `POST`
+*   **Description:** Logs in a user and returns a token.
+*   **Body (raw JSON):**
+    ```json
+    {
+        "user_id": "testuser",
+        "password": "yourpassword"
+    }
+    ```
+*   **React Example:**
+    ```javascript
+    fetch('http://127.0.0.1:8000/api/auth/login/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            user_id: 'testuser',
+            password: 'yourpassword',
+        }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log(data);
+        // Save the token for future requests
+        localStorage.setItem('authToken', data.token);
+    })
+    .catch(error => console.error('Error:', error));
+    ```
+
+### 3. Verification Request
+
+*   **Endpoint:** `/api/user/verification-request/`
+*   **Method:** `POST`
+*   **Description:** Submits a verification request for a user. This requires a token from login.
+*   **Headers:**
+    ```
+    Authorization: Token <your_auth_token>
+    ```
+*   **Body (form-data):** This endpoint likely expects `multipart/form-data` for file uploads.
+*   **React Example:**
+    ```javascript
+    const formData = new FormData();
+    formData.append('document_type', 'citizenship'); // or 'passport', etc.
+    formData.append('document_front', fileInput.files[0]); // from an <input type="file">
+    formData.append('document_back', fileInput2.files[0]);
+    formData.append('selfie', fileInput3.files[0]);
+
+    fetch('http://127.0.0.1:8000/api/user/verification-request/', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Token ${localStorage.getItem('authToken')}`,
+        },
+        body: formData,
+    })
+    .then(response => response.json())
+    .then(data => console.log(data))
+    .catch(error => console.error('Error:', error));
+    ```
+
+### 4. Add Product
+
+There isn't a specific endpoint for adding products in the provided `urls.py`. You may need to consult `backend/service_frontend/product.py` or other view files to find the correct endpoint and its required parameters. Once found, the request structure would be similar to the "Verification Request" example if it involves image uploads.
+
+## Notes for Android Developers
+
+For Android development, you can use libraries like **Retrofit** or **OkHttp** to make network requests. The concepts are the same as the `fetch` examples above.
+
+*   **Base URL:** Set the base URL in your Retrofit instance (`http://<your-local-ip>:8000/`).
+*   **Endpoints:** Define the API endpoints as interfaces in Retrofit.
+*   **Data Models:** Create Kotlin/Java classes that match the JSON structures for request and response bodies.
+*   **Authorization:** Use an OkHttp Interceptor to add the `Authorization` header to requests that require authentication.
+*   **File Uploads:** Use `@Multipart` annotations in Retrofit to handle `multipart/form-data` requests for endpoints like `verification-request`.
+
+Remember to request the `android.permission.INTERNET` permission in your `AndroidManifest.xml`.
+```xml
+<uses-permission android:name="android.permission.INTERNET" />
 ```
-
-## Migration
-
-To apply the token model changes:
-```bash
-py manage.py makemigrations
-py manage.py migrate
-```
-
-## Files Modified/Created
-
-### Modified:
-1. `backend/models.py` - Added `create_token` class method
-2. `backend/auth.py` - Fixed authentication logic
-3. `backend/service_frontend/authentication.py` - Updated token expiry logic
-4. `Farmo/settings.py` - Configured REST_FRAMEWORK settings
-5. `Farmo/urls.py` - Added protected view routes
-
-### Created:
-1. `backend/views.py` - Protected view examples
-2. `AUTHENTICATION_GUIDE.md` - This documentation
-
-## Best Practices
-
-1. **Always use HTTPS in production** to protect tokens in transit
-2. **Store tokens securely** on client side (httpOnly cookies preferred)
-3. **Implement token refresh** before expiry for better UX
-4. **Clear tokens on logout** from both client and server
-5. **Monitor token usage** for suspicious activity
-6. **Rotate tokens regularly** for admin users
-
-## Troubleshooting
-
-### Token not working
-- Check token is in `Authorization: Bearer <token>` format
-- Verify token exists in database with ACTIVE status
-- Check token hasn't expired
-- Ensure user account is ACTIVE
-
-### Multiple device login issues
-- Each device gets its own token
-- Maximum 2 active tokens per user
-- Oldest token auto-deactivated when limit reached
-
-## Future Enhancements
-
-1. Token blacklisting on logout
-2. Token refresh endpoint
-3. Multi-factor authentication
-4. IP-based token validation
-5. Suspicious activity detection

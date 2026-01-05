@@ -1,14 +1,14 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
-from backend.models import Wallet
+from backend.models import Wallet, Transaction
 
 @receiver(post_save, sender='backend.Users')
 def create_user_wallet(sender, instance, created, **kwargs):
 	"""Automatically create a wallet when a new user is created"""
 	if created and instance.is_admin == False:
 		Wallet.objects.create(
-			wallet_id=f"wallet_{instance.user_id}",
+			wallet_id=f"W-{instance.user_id}",
 			user_id=instance,
 			amount=0.00,
 			created_date=timezone.now(),
@@ -17,6 +17,26 @@ def create_user_wallet(sender, instance, created, **kwargs):
 	
     	
 @receiver(post_save, sender='backend.OrderRequest')
-def send_orderRequested_Notification(sender, instance, created, **kwargs):
-	"""Automatically create a wallet when a new user is created"""
-	message = 'message'
+def transaction_created_for_order(sender, instance, created, **kwargs):
+	'''Automatically create a transaction when a new order is created'''
+	farmer_wallet = Wallet.objects.get(user_id=instance.get_pid_from_orderid[0].user_id)
+	if created:
+		Transaction.objects.create(
+			transaction_id=f'T-{instance.order_id}',
+			order=instance,
+			Tranaction_to=farmer_wallet,
+			payment_method=instance.payment_method_accepted,
+			amount=instance.total_cost,
+			currency='NRP',
+			status='PENDING',
+			status_history=[
+				{'status': 'PENDING',
+	             'time': timezone.now()}
+				],
+			transaction_date=instance.ordered_date,
+			created_at=timezone.now(),
+			updated_at=None,
+			initiated_by= instance.consumer_id
+		)
+
+
