@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from .models import (
     Users, UsersProfile, Wallet, Transaction, Product, ProductMedia,
-    ProductRating, Rating, Verification, OrderRequest, OrdProdLink, Tokens, UserActivity, Connections, PaymentMethodAccepts)
+    ProductRating, Rating, Verification, OrderRequest, OrdProdLink, Tokens, UserActivity, Connections, PaymentMethodAccepts, OTPs)
 
 
 class UsersSerializer(serializers.ModelSerializer):
@@ -138,3 +138,8 @@ class PaymentMethodAcceptsSerializer(serializers.ModelSerializer):
         model = PaymentMethodAccepts
         fields = '__all__'
 
+class OTPSerializer(serializers.ModelSerializer):
+    """Serializer for OTP model"""
+    class Meta:
+        model = OTPs
+        fields = '__all__'

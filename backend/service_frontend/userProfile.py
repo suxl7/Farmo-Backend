@@ -8,6 +8,13 @@ import secrets
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from backend.utils.media_handler import FileManager
+from backend.utils.dataVerifier import is_email, is_phone
+
+
+
+##########################################################################################
+#                            Signup Start
+##########################################################################################
 
 
 @api_view(['POST'])
@@ -32,7 +39,7 @@ def register(request):
     tole = request.data.get('tole')
     phone = request.data.get('phone')
     phone02 = request.data.get('phone2', None)
-    email = request.data.get('email', None)
+    email = request.data.get('email')
     whatsapp = request.data.get('whatsapp', None)
     facebook = request.data.get('facebook', None)
     about = request.data.get('about', None)
@@ -58,6 +65,18 @@ def register(request):
             #'registration_success': False,
             'error': 'User ID already exists.'}, status=status.HTTP_400_BAD_REQUEST)
     
+    #check given name phone no and email are valid or not.
+    if not is_phone(phone):
+        return Response({
+            'error': 'Invalid phone number.'}, status=status.HTTP_400_BAD_REQUEST)
+    if phone02 and not is_phone(phone02):
+        return Response({
+            'error': 'Invalid secondary phone number.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not is_email(email):
+        return Response({
+            'error': 'Invalid email.'}, status=status.HTTP_400_BAD_REQUEST)
+    
+
     if user_type == 'SuperAdmin' and created_by == 'Admin':
         return Response({
             'error': 'You are trying to create higher level user.'}, status=status.HTTP_403_FORBIDDEN)
@@ -81,7 +100,6 @@ def register(request):
            # 'registration_success': False,
             'error': 'You have already created an account with this phone number.'}, status=status.HTTP_400_BAD_REQUEST)
     
-    profile_id = f"P{secrets.token_hex(8).upper()}"
     
     file_manager = FileManager(user_id)
     
@@ -100,8 +118,7 @@ def register(request):
         
         profile_picture_url = result['file_url']
     
-    profile = UsersProfile.objects.create(
-        profile_id=profile_id,
+    profile = UsersProfile.objects.create_profile(
         profile_url=profile_picture_url or None,
         f_name=f_name,
         m_name=m_name or None,
@@ -115,11 +132,10 @@ def register(request):
         dob=dob,
         sex=sex,
         phone02=phone02 or None,
-        email=email or None,
+        email=email,
         facebook=facebook or None,
         whatsapp=whatsapp or None,
         about=about or None,
-        join_date=join_date
     )
 
     if created_by in ['Admin', 'SuperAdmin']:
@@ -136,12 +152,21 @@ def register(request):
     )
     user.set_password(password)
     user.save()
-    message = "Registration successful. Use password: \"" + password + "\" to login." if profile_status == 'PENDING' else "Registration successful. Please login."
+    if created_by in ['Admin', 'SuperAdmin']:
+        message = "Registration successful. Use password: \"" + password + "\" to login." if profile_status == 'PENDING' else "Registration successful. Please login."
+    else:
+        message = "Registration successful. Please login."
     
     return Response({
        'message': message
     }, status=status.HTTP_201_CREATED)
 
+##########################################################################################
+#                            Signup
+##########################################################################################
+##########################################################################################
+#                            Verification Start
+##########################################################################################
 
 @api_view(['POST'])
 @permission_classes([HasValidTokenForUser])
@@ -202,6 +227,14 @@ def verification_request(request):
         'message': 'Verification request submitted successfully.'
     }, status=status.HTTP_200_OK)
 
+##########################################################################################
+#                            verification
+##########################################################################################
+
+
+##########################################################################################
+#                            Update Profile Picture
+##########################################################################################
 
 @api_view(['PUT'])
 @permission_classes([HasValidTokenForUser])
@@ -234,6 +267,14 @@ def update_profile_picture(request):
     return Response({
         'message': 'Profile picture updated successfully.'
     }, status=status.HTTP_200_OK)
+
+##########################################################################################
+#                            Profile Picture Update End
+##########################################################################################
+##########################################################################################
+#                            Payment Method 
+##########################################################################################
+
 
 @api_view(['PUT'])
 @permission_classes([HasValidTokenForUser])
@@ -271,7 +312,7 @@ def add_payment_method(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     
 
-@api_view(['PUT'])
+@api_view(['POST'])
 @permission_classes([HasValidTokenForUser])
 def get_payment_method(request):
     user_id = request.headers.get('user_id')
@@ -292,3 +333,7 @@ def get_payment_method(request):
         return Response({
             'error': 'Payment method not found'
         }, status=status.HTTP_404_NOT_FOUND)
+
+##########################################################################################
+#                            Payment Methods End
+##########################################################################################

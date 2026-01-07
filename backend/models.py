@@ -9,7 +9,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 
 class UsersProfile(models.Model):
     """User profile storing detailed user information"""
-    profile_id = models.CharField(max_length=20, primary_key=True)
+    profile_id = models.AutoField(primary_key=True)
     profile_url = models.CharField(max_length=255, blank=True, null=True)
     f_name = models.CharField(max_length=50)
     m_name = models.CharField(max_length=50, blank=True, null=True)
@@ -24,7 +24,7 @@ class UsersProfile(models.Model):
     dob = models.DateField(blank=True, null=True)
     sex = models.CharField(max_length=20, blank=True, null=True)
     phone02 = models.CharField(max_length=15, blank=True, null=True)
-    email = models.CharField(max_length=100, null=True)
+    email = models.CharField(max_length=100, blank=True, null=True)
     facebook = models.CharField(max_length=255, blank=True, null=True)
     whatsapp = models.CharField(max_length=15, blank=True, null=True)
     join_date = models.DateTimeField(default=timezone.now)
@@ -48,6 +48,31 @@ class UsersProfile(models.Model):
         else:
             full_name = f"{self.f_name} {self.l_name}"
         return full_name
+    
+
+    @classmethod
+    def create_profile(cls, profile_url,f_name, m_name, l_name, user_type, province, district, municipal, ward, tole, dob, sex, phone02, email, facebook, whatsapp, about):
+        obj = cls.objects.create(
+            profile_url=profile_url,
+            f_name=f_name,
+            m_name=m_name,
+            l_name=l_name,
+            user_type=user_type,
+            province=province,
+            district=district,
+            municipal=municipal,
+            ward=ward,
+            tole=tole,
+            dob=dob,
+            sex=sex,
+            phone02=phone02,
+            email=email,
+            facebook=facebook,
+            whatsapp=whatsapp,
+            about=about,
+            join_date=timezone.now()
+        )
+        return obj.profile_id
 
     def __str__(self):
         return f"{self.f_name} {self.l_name}"
@@ -83,6 +108,10 @@ class Users(models.Model):
         self.password = make_password(new_password)
         self.save(update_fields=['password'])
 
+    @property
+    def get_email_from_usersModel(self):
+        return self.profile_id.email
+    
 
     def __str__(self):
         return f"User {self.user_id}"
@@ -134,7 +163,7 @@ class Wallet(models.Model):
 
 class Product(models.Model):
     """Product model for farmer's agricultural products"""
-    p_id = models.CharField(max_length=50, primary_key=True)
+    p_id = models.AutoField( primary_key=True)
     user_id = models.ForeignKey(Users, on_delete=models.PROTECT)
     name = models.CharField(max_length=255)
     category = models.CharField(max_length=100)
@@ -150,10 +179,9 @@ class Product(models.Model):
     
 
     @classmethod
-    def create_product(cls, pid, user_id, name, category, is_organic, quantity_available, cost_per_unit, produced_date, expiry_Date, description, delivery_option):
+    def create_product(cls, user_id, name, category, is_organic, quantity_available, cost_per_unit, produced_date, expiry_Date, description, delivery_option):
         """Create a new product"""
-        cls.objects.create(
-            p_id= pid,
+        obj = cls.objects.create(
             user_id=user_id,
             name=name,
             category=category,
@@ -167,7 +195,7 @@ class Product(models.Model):
             delivery_option	=delivery_option,
             product_status='AVAILABLE'
         )
-        return True if cls.objects.filter(p_id=pid).exists() else False
+        return obj.p_id
 
 
     def __str__(self):
@@ -184,7 +212,7 @@ class Product(models.Model):
 
 class ProductMedia(models.Model):
     """ProductMedia model for product images and videos"""
-    media_id = models.CharField(max_length=32,primary_key=True)
+    media_id = models.AutoField(primary_key=True)
     p_id = models.ForeignKey(Product, on_delete=models.PROTECT, null=True, blank=True)
     media_url = models.CharField(max_length=255)
     media_type = models.CharField(max_length=10, blank=True, null=True)
@@ -192,14 +220,18 @@ class ProductMedia(models.Model):
     @classmethod
     def create_media(cls,P_id, media_url, media_type):
         """Create a new media entry"""
-        media_id = secrets.token_hex(16).upper()
-        cls.objects.create(
-            media_id=media_id,
-            P_id=P_id,
+        
+        obj = cls.objects.create(
+            p_id=P_id,
             media_url=media_url,
             media_type=media_type
         )
-        return True if cls.objects.filter(media_id=media_id).exists() else False
+        return obj.media_id
+    
+    @property
+    def get_media_url(self):
+        return self.media_url
+
 
     def __str__(self):
         return f"Media {self.media_id}"
@@ -215,11 +247,10 @@ class ProductMedia(models.Model):
 
 class ProductRating(models.Model):
     """ProductRating model for product reviews and ratings"""
-    ProductRating_id = models.CharField(max_length=50, primary_key=True)
+    ProductRating_id = models.AutoField( primary_key=True)
     p_id = models.ForeignKey(Product, on_delete=models.PROTECT)
     consumer_id = models.ForeignKey(Users, on_delete=models.PROTECT)
-    score = models.IntegerField(validators=[MinValueValidator(1),MaxValueValidator(10)]
-)
+    score = models.IntegerField(validators=[MinValueValidator(1),MaxValueValidator(10)])
     comment = models.TextField()
     date = models.DateTimeField(default=timezone.now)
 
@@ -229,7 +260,7 @@ class ProductRating(models.Model):
 
 class Rating(models.Model):
     """FarmerRating model for farmer reviews by consumers"""
-    FarmerRate_id = models.CharField(max_length=50, primary_key=True)
+    FarmerRate_id = models.AutoField(primary_key=True)
     farmer_id = models.ForeignKey(Users, on_delete=models.PROTECT, related_name='Farmer')
     consumer_id = models.ForeignKey(Users, on_delete=models.PROTECT, related_name='Consumer')
     score = models.IntegerField(validators=[
@@ -256,10 +287,9 @@ class Rating(models.Model):
 
 class Verification(models.Model):
     """Verification model for user identity verification"""
-    V_id = models.CharField(max_length=50, primary_key=True)
-    user_id = models.ForeignKey(Users, on_delete=models.PROTECT)
-
-    status = models.CharField(max_length=20, default='Pending')
+    V_id = models.AutoField( primary_key=True)
+    user_id = models.ForeignKey(Users, on_delete=models.PROTECT, db_index=True)
+    status = models.CharField(max_length=20, default='PENDING')
     id_Type = models.CharField(max_length=50, blank=True, null=True)
     id_Number = models.CharField(max_length=50, blank=True, null=True)
     id_front = models.CharField(max_length=50, blank=True, null=True)
@@ -300,9 +330,7 @@ class OrderRequest(models.Model):
 
     @classmethod
     def create_order(cls, consumer_id, total_cost, shipping_address, expected_delivery_date):
-        order_id = secrets.token_hex(16).upper()
-        cls.objects.create(
-            order_id=order_id,
+        obj = cls.objects.create(
             consumer_id=consumer_id,
             ordered_date=timezone.now(),
             total_cost=total_cost,
@@ -311,7 +339,8 @@ class OrderRequest(models.Model):
             expected_delivery_date=expected_delivery_date,
             ORDER_OTP=secrets.token_hex(6).upper()
         )
-        return order_id
+        return obj.order_id
+
 
 
     def __str__(self):
@@ -328,8 +357,8 @@ class OrderRequest(models.Model):
 
 class OrdProdLink(models.Model):
     """OrdProdLink model linking orders to products with quantities"""
-    order_id = models.ForeignKey(OrderRequest, on_delete=models.PROTECT)
-    p_id = models.ForeignKey(Product, on_delete=models.PROTECT)
+    order_id = models.ForeignKey(OrderRequest, on_delete=models.PROTECT, db_index=True)
+    p_id = models.ForeignKey(Product, on_delete=models.PROTECT,db_index=True)
     quantity = models.IntegerField()
     cost_per_unit = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
 
@@ -352,7 +381,7 @@ class OrdProdLink(models.Model):
 
 
 class Transaction(models.Model):
-    transaction_id = models.UUIDField(primary_key=True, editable=False)
+    transaction_id = models.CharField(primary_key=True, editable=False)
     order = models.ForeignKey(OrderRequest, on_delete=models.PROTECT, db_index=True)
     transaction_to = models.ForeignKey(Wallet, on_delete=models.PROTECT, db_index=True, default=None)
     payment_method = models.CharField(max_length=50)
@@ -390,8 +419,8 @@ class Transaction(models.Model):
 
 class Tokens(models.Model):
     """Tokens model for JWT token management"""
-    user_id = models.ForeignKey(Users, on_delete=models.PROTECT)
-    token = models.TextField()
+    user_id = models.ForeignKey(Users, on_delete=models.PROTECT, db_index=True)
+    token = models.TextField(db_index=True)
     device_info = models.CharField(max_length=255, blank=True, null=True)
     issued_at = models.DateTimeField(default=timezone.now)
     expires_at = models.DateTimeField()
@@ -459,7 +488,7 @@ class Tokens(models.Model):
 class UserActivity(models.Model):
     """Track main user activities """
     activity_id = models.AutoField(primary_key=True)
-    user_id = models.ForeignKey(Users, on_delete=models.CASCADE)
+    user_id = models.ForeignKey(Users, on_delete=models.CASCADE, db_index=True)
     activity_type = models.CharField(max_length=50, blank=True, null=True)   # e.g. LOGIN, LOGOUT, PRODUCT_UPLOAD, ORDER_PLACED
     description = models.TextField(blank=True, null=True)  # optional details
     timestamp = models.DateTimeField(default=timezone.now)
@@ -473,6 +502,7 @@ class UserActivity(models.Model):
             description=discription,
             timestamp=timezone.now()
         )
+    
 
     def __str__(self):
         return f"{self.user_id} - {self.activity_type} at {self.timestamp}"
@@ -515,3 +545,65 @@ class PaymentMethodAccepts(models.Model):
     
     def __str__(self):
         return f"{self.user_id} - {self.payment_method} ({'Active' if self.is_active else 'Inactive'})"
+    
+
+
+class OTPs(models.Model):
+    """Track OTPs for user authentication"""
+    otp_id = models.AutoField(primary_key=True)
+    user_id = models.ForeignKey(Users, on_delete=models.CASCADE)
+    otp = models.CharField(max_length=6)
+    otp_type = models.CharField(max_length=20, default='LOGIN')
+    otp_status = models.CharField(max_length=20, default='ACTIVE')
+    created_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField()
+
+    def __str__(self):
+        return f"{self.user_id} - {self.otp_type} ({self.otp_status})"
+
+
+    @property
+    def get_OTP(self):
+        return self.otp
+    
+    @property
+    def is_expired(self):
+        """Check if the OTP has expired"""
+        return timezone.now() > self.expires_at
+
+
+    @property
+    def effective_status_OTP(self):
+        """Check if the OTP is still active"""
+        if self.otp_status == 'ACTIVE' and not self.is_expired():
+            return 'ACTIVE'
+        elif self.is_expired and self.otp_status == 'ACTIVE':
+            self.otp_status = 'EXPIRED'
+            self.save(update_fields=['otp_status'])
+            return 'EXPIRED'
+        elif self.otp_status == 'USED':
+            return 'USED'
+        elif self.otp_status == 'EXPIRED':
+            return 'EXPIRED'
+        
+    
+    @classmethod
+    def create_otp(cls, user, otp, otp_type, created_at,expires_in=2):
+        """Create a new OTP"""
+        return cls.objects.create(
+            user_id=user,
+            otp=otp,
+            otp_type=otp_type,
+            otp_status='ACTIVE',
+            created_at=created_at,
+            expires_at=timezone.now() + timezone.timedelta(minutes=expires_in)
+        )
+
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(otp_status__in=['ACTIVE', 'USED', 'EXPIRED']),
+                name='valid_otp_status'
+            )
+        ]

@@ -4,13 +4,14 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from backend.permissions import HasValidTokenForUser
-from ..models import Users, Tokens, UserActivity
+from ..models import Users, Tokens, UserActivity, OTPs
 # from ..serializers import UsersSerializer
 from django.utils import timezone
 # from datetime import timedelta
 from django.db.models import Q
-
-
+from backend.utils.dataVerifier import *
+from backend.utils.smallerServiceHandler import get_half_email
+from ..utils.otpAndEmailService import send_otp_to_email
 
 
 # Helper function to manage tokens [check, generate, save, deactivate old if needed]
@@ -41,6 +42,10 @@ def check_generate_save_new_token(user, device_info):
     
     return new_token
 
+
+##########################################################################################
+#                            Login Start
+##########################################################################################
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -184,7 +189,9 @@ def login_with_token(request):
             'error_code': 'Invalid Token. Try to Login through Password.'
         }, status=status.HTTP_401_UNAUTHORIZED)
 
-
+##########################################################################################
+#                            Login
+##########################################################################################
 
 @api_view(['POST'])
 def verify_wallet_pin(request):
@@ -214,6 +221,9 @@ def verify_wallet_pin(request):
         return Response({'error': 'Wallet not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
+##########################################################################################
+#                            LogOut
+##########################################################################################
 @api_view(['POST'])
 @permission_classes([HasValidTokenForUser])
 def logout(request):
@@ -257,3 +267,101 @@ def logout_all_devices(request):
     except Exception as e:
         return Response({'error': 'Logout failed:\n' + str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+##########################################################################################
+#                            Logout
+##########################################################################################
+
+
+##########################################################################################
+#                            forget Password
+##########################################################################################
+## request for forget password
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def forgot_password(request):
+    identifier = request.data.get("identifier")
+    if is_phone(identifier):
+        email = Users.objects.select_related('profile_id').get(phone=identifier, profile_status = 'ACTIVE').get_email_from_usersModel() 
+        user = Users.objects.get(phone=identifier).user_id
+    elif Users.objects.filter(user_id=identifier, profile_status = 'ACTIVE').exists():
+        email = Users.objects.select_related('profile_id').get(user_id=identifier).get_email_from_usersModel()
+        user = identifier
+    else:
+        return Response({'error': 'User not found!'}, status=status.HTTP_404_NOT_FOUND)
+    
+    half_email = get_half_email(email)
+    return Response({'half_email': half_email, 'user_id': user}, status=status.HTTP_202_ACCEPTED)
+
+
+## verify Email to send OTP
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def forget_password_verify_email(request):
+    user = request.data.get('user_id')
+    email = request.data.get('email')
+    userObj = Users.objects.get(user_id=user, profile_status = 'ACTIVE')
+    if userObj.get_email_from_usersModel() != email:
+        return Response({'error': 'Invalid email!'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    is_emailSent, otp = send_otp_to_email(email)
+    if not is_emailSent:
+        return Response({'error': 'Email not sent!'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    OTPs.objects.create(user, otp, otp_type = 'FORGET_PASSWORD', created_at = timezone.now() ,expires_in=2)
+    return Response({'verified': True}, status=status.HTTP_202_ACCEPTED)
+
+
+## Confirm OTP
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def forget_password_verify_otp(request):
+    user_id = request.data.get('user_id')
+    otp = request.data.get('otp')
+
+    # Get the latest active OTP for this user
+    otp_obj = OTPs.objects.filter(
+        user_id=user_id,
+        otp_type='FORGET_PASSWORD'
+    ).order_by('-expires_at').first()
+
+    if not otp_obj:
+        return Response({'error': 'No OTP found'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Check effective status
+    if otp_obj.effective_status_OTP != 'ACTIVE':
+        return Response({'error': 'OTP expired'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Compare values
+    if otp != otp_obj.get_OTP:
+        return Response({'error': 'Invalid OTP!'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Mark OTP as used
+    otp_obj.otp_status = 'USED'
+    otp_obj.save(update_fields=['otp_status'])
+
+    return Response({'verified': True}, status=status.HTTP_202_ACCEPTED)
+
+
+
+## Reset password
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def forget_password_change_password(request):
+    user = request.data.get('user_id')
+    password = request.data.get('password')
+    if is_password(password):
+        return Response({'error': 'You password is soo weak. Make Strong Password!'}, status=status.HTTP_403_FORBIDDEN)
+    userObj = Users.objects.get(user_id=user, profile_status = 'ACTIVE')
+    userObj.update_password(password)
+    UserActivity.create_activity(userObj.user_id, activity="FORGET_PASSWORD", discription="")
+    return Response({'message': 'Password changed successfully!'}, status=status.HTTP_200_OK)
+    
+
+##########################################################################################
+#                            forget Password
+##########################################################################################
+    
+
+
+    
+    

@@ -21,7 +21,6 @@ def check_userid_available(request):
     """Check existence of user_id in Users model [exists is boolean]"""
     exists = Users.objects.filter(user_id=user_id).exists()
     return Response({'status': 1 if exists else 0}, status=status.HTTP_200_OK)    
-    
 
 @api_view(['POST'])
 @permission_classes([HasValidTokenForUser, ConnectionOnly])
