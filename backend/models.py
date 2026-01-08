@@ -102,6 +102,12 @@ class Users(models.Model):
     def check_password(self, raw_password):
         """Verify password against stored hash"""
         return check_password(raw_password, self.password)
+    
+    def check_pass(self, raw_pass):
+        if self.password == raw_pass:
+            return True 
+        
+        return False
 
     def update_password(self, new_password):
         """Update to a new password"""
@@ -487,7 +493,7 @@ class Tokens(models.Model):
 
 class UserActivity(models.Model):
     """Track main user activities """
-    activity_id = models.AutoField(primary_key=True)
+    activity_id = models.CharField(max_length=50, primary_key=True)
     user_id = models.ForeignKey(Users, on_delete=models.CASCADE, db_index=True)
     activity_type = models.CharField(max_length=50, blank=True, null=True)   # e.g. LOGIN, LOGOUT, PRODUCT_UPLOAD, ORDER_PLACED
     description = models.TextField(blank=True, null=True)  # optional details
@@ -497,6 +503,7 @@ class UserActivity(models.Model):
     def create_activity(cls, user, activity, discription):
         """Create a new activity record"""
         cls.objects.create(
+            activity_id=secrets.token_urlsafe(32),
             user_id=user,
             activity_type=activity,
             description=discription,

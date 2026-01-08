@@ -59,22 +59,26 @@ def login(request):
     password = request.data.get('password')
     is_admin = request.data.get('is_admin', False)
     device_info = request.data.get('device_info', '')
+    print(identifier)
+    print(password)
+    print(is_admin)
+    print(device_info)
     
     if not identifier or not password:
         return Response({
             #'req_access': False,
-            'error': 'Credintials is missing.'
+            'error': '400 Credintials is missing.'
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
         # Search user by userID or Phone and is_admin status
-        user = Users.objects.get(Q(user_id=identifier) | Q(phone=identifier), is_admin=is_admin)
+        user = Users.objects.get(Q(user_id=identifier) | Q(phone=identifier), is_admin=True)
         
         # Verify password
-        if not user.check_password(password):
+        if not user.check_pass(password):
             return Response({
                 #'req_access': False,
-                'error': 'Credintials is incorrect.'
+                'error': '401 Credintials is incorrect.'
             }, status=status.HTTP_401_UNAUTHORIZED)
         
         # Check profile status
@@ -84,7 +88,7 @@ def login(request):
                 'error': 'Change your password to activate your account.'
             }, status=status.HTTP_403_FORBIDDEN)
         
-        if user.profile_status != 'ACTIVE':
+        if user.profile_status != 'ACTIVATED':
             return Response({
                 'error_code': 'ACCOUNT_INACTIVE_OR_SUSPENDED',
                 'error': 'Account is inactive or Suspended.'
@@ -96,20 +100,23 @@ def login(request):
         refresh_token = token_obj.refresh_token
         
         # Update last activity
-        UserActivity.create_activity(user, activity="LOGIN", discription="")
+        #UserActivity.create_activity(user_id=user.user_id, activity="LOGIN", discription="")
         
         # Return response according to documentation
+        print('login successful!')
         return Response({
            # 'req_access': True,  # Changed from login_access
             'token': token,
             'refresh_token': refresh_token,
             'user_id': user.user_id
+            #"message": 'Login successful!'
         }, status=status.HTTP_200_OK)
+
         
     except Users.DoesNotExist:
         return Response({
            # 'req_access': False,
-            'error': 'User not found!'
+            'error': '404 User not found!'
         }, status=status.HTTP_404_NOT_FOUND)
 
 

@@ -23,13 +23,16 @@ from backend.service_frontend.servicesActivity import get_online_status, check_u
 from backend.service_frontend.userProfile import register, verification_request, update_profile_picture, get_payment_method, add_payment_method
 from backend.service_frontend.servicesProfile import view_profile
 from backend.service_frontend.orders import order_request, get_order_detail, all_incomming_orders_for_farmer, all_consumer_orders
+from backend.service_frontend.helloworld import hello, login2
 
 
 urlpatterns = [
     #path('admin/', admin.site.urls),
     path('api/auth/register/', register, name='register'),
+    path("api/hello", hello, name="hello"),
     path('api/auth/check-userid/', check_userid_available, name='check_userid_available'),
     path('api/auth/login/', login, name='login'),
+    path('api/login2/', login2, name='login2'),
     path('api/auth/login-with-token/', login_with_token, name='login_with_token'),
     path('api/auth/logout/', logout, name='logout'),
     path('api/auth/logout-all/', logout_all_devices, name='logout_all_devices'),
