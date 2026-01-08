@@ -494,7 +494,7 @@ class Tokens(models.Model):
 class UserActivity(models.Model):
     """Track main user activities """
     activity_id = models.CharField(max_length=50, primary_key=True)
-    user_id = models.ForeignKey(Users, on_delete=models.CASCADE, db_index=True)
+    user_id = models.ForeignKey(Users, on_delete=models.CASCADE)
     activity_type = models.CharField(max_length=50, blank=True, null=True)   # e.g. LOGIN, LOGOUT, PRODUCT_UPLOAD, ORDER_PLACED
     description = models.TextField(blank=True, null=True)  # optional details
     timestamp = models.DateTimeField(default=timezone.now)

@@ -141,7 +141,7 @@ def register(request):
     if created_by in ['Admin', 'SuperAdmin']:
         profile_status = 'PENDING'
     else:
-        profile_status = 'ACTIVE'
+        profile_status = 'ACTIVATED'
     
     user = Users.objects.create(
         user_id=user_id,

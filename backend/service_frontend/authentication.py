@@ -71,8 +71,13 @@ def login(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
+        user_type = 'ADMIN'
         # Search user by userID or Phone and is_admin status
-        user = Users.objects.get(Q(user_id=identifier) | Q(phone=identifier), is_admin=True)
+        user = Users.objects.get(Q(user_id=identifier) | Q(phone=identifier), is_admin=is_admin)
+        if not is_admin and (user.profile_id.user_type.lower() == 'farmer' or user.profile_id.user_type.lower() == 'verifiedfarmer'):
+            user_type = 'Farmer'
+        elif not is_admin and (user.profile_id.user_type.lower() == 'consumer' or user.profile_id.user_type.lower() == 'verifiedconsumer'):
+            user_type = 'Consumer'
         
         # Verify password
         if not user.check_pass(password):
@@ -85,13 +90,13 @@ def login(request):
         if user.profile_status == 'PENDING':
             return Response({
                 'error_code': 'ACCOUNT_PENDING',
-                'error': 'Change your password to activate your account.'
+                'error': '403 Change your password to activate your account.'
             }, status=status.HTTP_403_FORBIDDEN)
         
         if user.profile_status != 'ACTIVATED':
             return Response({
                 'error_code': 'ACCOUNT_INACTIVE_OR_SUSPENDED',
-                'error': 'Account is inactive or Suspended.'
+                'error': '403 Account is inactive or Suspended.'
             }, status=status.HTTP_403_FORBIDDEN)
         
         # Generate tokens and manage active tokens
@@ -100,7 +105,7 @@ def login(request):
         refresh_token = token_obj.refresh_token
         
         # Update last activity
-        #UserActivity.create_activity(user_id=user.user_id, activity="LOGIN", discription="")
+        UserActivity.create_activity(user=user, activity="LOGIN", discription="")
         
         # Return response according to documentation
         print('login successful!')
@@ -108,7 +113,9 @@ def login(request):
            # 'req_access': True,  # Changed from login_access
             'token': token,
             'refresh_token': refresh_token,
-            'user_id': user.user_id
+            'user_id': user.user_id,
+            'user_type': user_type
+            #'error': '
             #"message": 'Login successful!'
         }, status=status.HTTP_200_OK)
 
@@ -138,10 +145,11 @@ def login_with_token(request):
     if not token or not user_id or not refresh_token:
         return Response({
             #'req_access': False,
-            'error': 'Coding Error! Token or user_id is missing. Try to Login through Password.'
+            'error': '406 Token or user_id is missing. Try to Login through Password.'
         }, status=status.HTTP_406_NOT_ACCEPTABLE)
 
     try:
+        #print('1')
         # Find token entry in database
         token_entry = Tokens.objects.get(
             token=token,
@@ -151,24 +159,24 @@ def login_with_token(request):
         )
         
         user = token_entry.user_id
-        
+        #print('2')
         # Check profile status
-        if user.profile_status != 'ACTIVE':
+        if user.profile_status != 'ACTIVATED':
             return Response({
                # 'req_access': False,
-                'error': 'Account is inactive or Suspended.'
+                'error': '403 Account is inactive or Suspended.'
             }, status=status.HTTP_403_FORBIDDEN)
         
         # Check if token is expired (after 40 days)
         current_time = timezone.now()
-        
+        #print('3')
         if current_time > token_entry.expires_at:
             # Token expired but present - generate new tokens using refresh_token
             new_token_obj = check_generate_save_new_token(user, device_info) 
             new_token = new_token_obj.token
             new_refresh_token = new_token_obj.refresh_token
             
-            UserActivity.create_activity(user, activity="LOGIN", discription="")
+            UserActivity.create_activity(user=user, activity="LOGIN", discription="")
             
             # Return new tokens
             return Response({
@@ -179,8 +187,9 @@ def login_with_token(request):
             }, status=status.HTTP_200_OK)
         
         else:
+            #print('4')
             # Token still valid - just grant access
-            UserActivity.create_activity(user, activity="LOGIN", discription="")
+            UserActivity.create_activity(user=user, activity="LOGIN", discription="")
             
             # According to doc: Second time login returns no new tokens
             return Response({
@@ -191,9 +200,10 @@ def login_with_token(request):
             }, status=status.HTTP_200_OK)
         
     except Tokens.DoesNotExist:
+        #print('5')
         return Response({
             #'req_access': False,
-            'error_code': 'Invalid Token. Try to Login through Password.'
+            'error_code': '401 Invalid Token. Try to Login through Password.'
         }, status=status.HTTP_401_UNAUTHORIZED)
 
 ##########################################################################################
