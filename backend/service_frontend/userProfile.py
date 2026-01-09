@@ -222,7 +222,7 @@ def verification_request(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     
     # TODO: Save to Verification model
-    
+
     return Response({
         'message': 'Verification request submitted successfully.'
     }, status=status.HTTP_200_OK)

@@ -27,7 +27,7 @@ To connect to the development server from a different device (e.g., a mobile pho
     ```python
     # Farmo/settings.py
 
-    ALLOWED_HOSTS = ['192.168.1.10', '127.0.0.1', 'localhost']
+    ALLOWED_HOSTS = [*, '127.0.0.1', 'localhost']
     ```
 
 3.  **Use the IP address in your frontend application's API calls.**

@@ -555,9 +555,8 @@ class PaymentMethodAccepts(models.Model):
     
 
 
-class OTPs(models.Model):
+class OTP(models.Model):
     """Track OTPs for user authentication"""
-    otp_id = models.AutoField(primary_key=True)
     user_id = models.ForeignKey(Users, on_delete=models.CASCADE)
     otp = models.CharField(max_length=6)
     otp_type = models.CharField(max_length=20, default='LOGIN')

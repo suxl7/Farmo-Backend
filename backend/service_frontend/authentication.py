@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from backend.permissions import HasValidTokenForUser
-from ..models import Users, Tokens, UserActivity, OTPs
+from ..models import Users, Tokens, UserActivity, OTP
 # from ..serializers import UsersSerializer
 from django.utils import timezone
 # from datetime import timedelta
@@ -324,7 +324,7 @@ def forget_password_verify_email(request):
     is_emailSent, otp = send_otp_to_email(email)
     if not is_emailSent:
         return Response({'error': 'Email not sent!'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    OTPs.objects.create(user, otp, otp_type = 'FORGET_PASSWORD', created_at = timezone.now() ,expires_in=2)
+    OTP.objects.create(user, otp, otp_type = 'FORGET_PASSWORD', created_at = timezone.now() ,expires_in=2)
     return Response({'verified': True}, status=status.HTTP_202_ACCEPTED)
 
 
@@ -336,7 +336,7 @@ def forget_password_verify_otp(request):
     otp = request.data.get('otp')
 
     # Get the latest active OTP for this user
-    otp_obj = OTPs.objects.filter(
+    otp_obj = OTP.objects.filter(
         user_id=user_id,
         otp_type='FORGET_PASSWORD'
     ).order_by('-expires_at').first()
