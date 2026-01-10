@@ -11,7 +11,10 @@ from django.utils import timezone
 @api_view(['POST'])
 @permission_classes([HasValidTokenForUser])
 def dashboard_fullfillment(request):
-    if request.userid.is_admin:
+    userid = request.headers.get('userid')
+    user = Users.objects.get(user_id=userid)
+    #print(userid)
+    if user.is_admin:
         return Response({
         'total_farmers': get_total_farmers(),
         'active_products': get_active_products(),
@@ -19,7 +22,7 @@ def dashboard_fullfillment(request):
         'verification_requests': get_verification_requests()
         }, status=status.HTTP_200_OK)
     
-    elif request.userid.profile_id.user_type == 'Farmer':
+    elif user.profile_id.user_type in ['Farmer', 'VerifiedFarmer']:
         return Response({
         'connections': get_user_total_connections(request.userid),
         'wallet_balance': get_wallet_balance(request.userid),
@@ -27,7 +30,7 @@ def dashboard_fullfillment(request):
         'total_orders': get_farmer_orderRequests(request.userid)
         }, status=status.HTTP_200_OK)
     
-    elif request.userid.profile_id.user_type == 'Consumer':
+    elif user.profile_id.user_type in  ['Consumer', 'VerifiedConsumer']:
         return Response({
         'connections': get_user_total_connections(request.userid),
         'order_requests': get_orderRequested_by_consumer(request.userid)

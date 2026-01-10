@@ -270,12 +270,12 @@ class DeleteProductRate(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 # List all product ratings
-class ListProductRatings(APIView):
-    permission_classes = [HasValidTokenForUser, IsFarmer, IsConsumer]
-    def get(self, request):
-        product_ratings = ProductRating.objects.all()
-        serializer = ProductRatingSerializer(product_ratings, many=True)
-        return Response(serializer.data)
+# class ListProductRatings(APIView):
+#     permission_classes = [HasValidTokenForUser, IsFarmer, IsConsumer]
+#     def get(self, request):
+#         product_ratings = ProductRating.objects.all()
+#         serializer = ProductRatingSerializer(product_ratings, many=True)
+#         return Response(serializer.data)
 
 # List ratings for a specific product
 class ListProductRatingsByProduct(APIView):

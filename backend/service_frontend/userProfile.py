@@ -245,6 +245,7 @@ def verification_request(request):
         'message': 'Verification request submitted successfully.'
     }, status=status.HTTP_200_OK)
 
+
 ##########################################################################################
 #                            verification
 ##########################################################################################

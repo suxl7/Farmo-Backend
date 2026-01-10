@@ -44,3 +44,7 @@ def transaction_created_for_order(sender, instance, created, **kwargs):
 		)
 
 
+@receiver(post_save, sender='backend.Verification')
+def update_user_profile_status(sender, instance, created, **kwargs):
+	'''Automatically update the user profile status when a new verification is created'''
+	u = 'p'
