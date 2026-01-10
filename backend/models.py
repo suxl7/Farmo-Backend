@@ -259,28 +259,25 @@ class ProductRating(models.Model):
 
 
 class Rating(models.Model):
-    """FarmerRating model for farmer reviews by consumers"""
-    FarmerRate_id = models.AutoField(primary_key=True)
-    farmer_id = models.ForeignKey(Users, on_delete=models.PROTECT, related_name='Farmer')
-    consumer_id = models.ForeignKey(Users, on_delete=models.PROTECT, related_name='Consumer')
+    """Rating model for farmer reviews by consumers"""
+    rated_to = models.ForeignKey(Users, on_delete=models.PROTECT, related_name='rated_to')
+    rated_by = models.ForeignKey(Users, on_delete=models.PROTECT, related_name='rated_by')
     score = models.IntegerField(validators=[
             MinValueValidator(1),
             MaxValueValidator(10)
         ])
     comment = models.TextField()
-
-    rated_by = models.CharField(max_length=50, default='Consumer') #
-
-    date = models.DateTimeField(default=timezone.now)
+    rated_for = models.CharField(max_length=50, default='Consumer') #
+    rated_update = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
-        return f"Rating {self.FarmerRate_id}: {self.score}"
+        return f"Rating {self.Rate_id}: {self.score}"
 
     class Meta:
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(rated_by__in=['Farmer', 'Consumer']),
-                name='valid_rated_by'
+                condition=models.Q(rated_for__in=['Farmer', 'Consumer']),
+                name='valid_rated_for'
             )
         ]
 

@@ -1,4 +1,4 @@
-from backend.permissions import HasValidTokenForUser
+from backend.permissions import HasValidTokenForUser, IsFarmer
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
@@ -13,10 +13,10 @@ import secrets
 
 
 @api_view(['POST'])
-@permission_classes([HasValidTokenForUser])
+@permission_classes([HasValidTokenForUser, IsFarmer])
 def add_products(request):
     """Protected view - requires valid token"""
-    user = request.user
+    user = request.header.get('user_id')
     name = request.data.get('name')
     category = request.data.get('category')
     is_organic = request.data.get('is_organic')

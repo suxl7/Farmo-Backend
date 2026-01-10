@@ -72,15 +72,14 @@ class ProductRatingSerializer(serializers.ModelSerializer):
     """Serializer for ProductRating model"""
     class Meta:
         model = ProductRating
-        fields = '__all__'
+        fields = ['ProductRating_id', 'p_id', 'consumer_id', 'score', 'comment', 'date']
+        read_only_fields = ['ProductRating_id', 'date']
 
 
 class RatingSerializer(serializers.ModelSerializer):
-    """Serializer for Rating model"""
     class Meta:
         model = Rating
         fields = '__all__'
-
 
 
 class VerificationSerializer(serializers.ModelSerializer):
