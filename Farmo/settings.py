@@ -148,6 +148,12 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.AllowAny',
         'backend.permissions.HasValidTokenForUser',
         'backend.permissions.ConnectionOnly',
+        'backend.permissions.IsAdmin',
+        'backend.permissions.IsSuperAdmin',
+        'backend.permissions.IsFarmer',
+        'backend.permissions.IsConsumer',
+        'backend.permissions.IsVerifiedFarmer',
+        'backend.permissions.IsVerifiedConsumer',
     ],
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',

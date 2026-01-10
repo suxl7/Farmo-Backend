@@ -8,7 +8,9 @@ import secrets
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from backend.utils.media_handler import FileManager
-from backend.utils.dataVerifier import is_email, is_phone
+from backend.utils.validators import validate_email_format, validate_nepali_phone , validate_facebook_url, validate_whatsapp, validate_first_name, validate_last_name, validate_middle_name
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 
 
 
@@ -24,11 +26,6 @@ def register(request):
     created_by = request.data.get('created_by')
 
     user_id = request.data.get('user_id')
-    if created_by == 'Admin':
-        password = get_random_string(length=8)
-    else:
-        password = request.data.get('password')
-
     f_name = request.data.get('f_name') # required
     m_name = request.data.get('m_name', None) # optional
     l_name = request.data.get('l_name')
@@ -54,27 +51,48 @@ def register(request):
 
     from django.utils.dateparse import parse_date
     dob = parse_date(dob_str)
+   
+    # Check Password validation
+    if created_by in ['SuperAdmin', 'Admin'] and not user_id:
+        password = get_random_string(length=8)
+    else:
+        password = request.data.get('password')
+        try:
+            validate_password(password)
+        except ValidationError as e:
+            return Response({
+                'error': ' '.join(e.messages)  # Joins with space
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+    
 
     if not all([user_id, password, f_name, l_name, user_type, phone, province, district, municipal, ward, tole, dob, sex]):
         return Response({
             'error': 'Required fields are missing.'
             }, status=status.HTTP_400_BAD_REQUEST)
     
+    # validation of Name, email, phone, fb, whatsapp
+    try:
+        validate_first_name(f_name)
+        validate_last_name(l_name)
+        validate_middle_name(m_name)
+        validate_email_format(email)
+        validate_nepali_phone(phone)
+        if phone02 is not None or phone02 != '':
+            validate_nepali_phone(phone02)
+        if facebook is not None or facebook != '':
+            validate_facebook_url(facebook)
+        if whatsapp is not None or whatsapp != '':
+            validate_whatsapp(whatsapp)
+    except ValidationError as e:
+        return Response({
+            'error': ' '.join(e.messages)  # Joins with space
+        }, status=status.HTTP_400_BAD_REQUEST)
+
     if Users.objects.filter(user_id=user_id).exists():
         return Response({
             #'registration_success': False,
             'error': 'User ID already exists.'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    #check given name phone no and email are valid or not.
-    if not is_phone(phone):
-        return Response({
-            'error': 'Invalid phone number.'}, status=status.HTTP_400_BAD_REQUEST)
-    if phone02 and not is_phone(phone02):
-        return Response({
-            'error': 'Invalid secondary phone number.'}, status=status.HTTP_400_BAD_REQUEST)
-    if not is_email(email):
-        return Response({
-            'error': 'Invalid email.'}, status=status.HTTP_400_BAD_REQUEST)
     
 
     if user_type == 'SuperAdmin' and created_by == 'Admin':
@@ -171,7 +189,7 @@ def register(request):
 @api_view(['POST'])
 @permission_classes([HasValidTokenForUser])
 def verification_request(request):
-    user_id = request.data.get('user_id')
+    user_id = request.headers.get('user_id')
     id_front = request.FILES.get('id_front')
     id_back = request.FILES.get('id_back')
     selfie_with_id = request.FILES.get('selfie_with_id')
@@ -239,7 +257,8 @@ def verification_request(request):
 @api_view(['PUT'])
 @permission_classes([HasValidTokenForUser])
 def update_profile_picture(request):
-    user_id = request.user.user_id
+    user_id = request.headers.get('user_id')
+    #user_id = requestuser_id
     new_picture = request.FILES.get('profile_picture')
     
     # Initialize FileManager

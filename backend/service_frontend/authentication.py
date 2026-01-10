@@ -9,7 +9,7 @@ from ..models import Users, Tokens, UserActivity, OTP
 from django.utils import timezone
 # from datetime import timedelta
 from django.db.models import Q
-from backend.utils.dataVerifier import *
+from backend.utils.validators import validate_nepali_phone
 from backend.utils.smallerServiceHandler import get_half_email
 from ..utils.otpAndEmailService import send_otp_to_email
 
@@ -67,7 +67,7 @@ def login(request):
     if not identifier or not password:
         return Response({
             #'req_access': False,
-            'error': '400 Credintials is missing.'
+            'error': 'Credintials is missing.'
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
@@ -83,20 +83,20 @@ def login(request):
         if not user.check_pass(password):
             return Response({
                 #'req_access': False,
-                'error': '401 Credintials is incorrect.'
+                'error': 'Credintials is incorrect.'
             }, status=status.HTTP_401_UNAUTHORIZED)
         
         # Check profile status
         if user.profile_status == 'PENDING':
             return Response({
                 'error_code': 'ACCOUNT_PENDING',
-                'error': '403 Change your password to activate your account.'
+                'error': 'Change your password to activate your account.'
             }, status=status.HTTP_403_FORBIDDEN)
         
         if user.profile_status != 'ACTIVATED':
             return Response({
                 'error_code': 'ACCOUNT_INACTIVE_OR_SUSPENDED',
-                'error': '403 Account is inactive or Suspended.'
+                'error': 'Account is inactive or Suspended.'
             }, status=status.HTTP_403_FORBIDDEN)
         
         # Generate tokens and manage active tokens
@@ -123,7 +123,7 @@ def login(request):
     except Users.DoesNotExist:
         return Response({
            # 'req_access': False,
-            'error': '404 User not found!'
+            'error': 'User not found!'
         }, status=status.HTTP_404_NOT_FOUND)
 
 
@@ -145,7 +145,7 @@ def login_with_token(request):
     if not token or not user_id or not refresh_token:
         return Response({
             #'req_access': False,
-            'error': '406 Token or user_id is missing. Try to Login through Password.'
+            'error': 'Token or user_id is missing. Try to Login through Password.'
         }, status=status.HTTP_406_NOT_ACCEPTABLE)
 
     try:
@@ -164,7 +164,7 @@ def login_with_token(request):
         if user.profile_status != 'ACTIVATED':
             return Response({
                # 'req_access': False,
-                'error': '403 Account is inactive or Suspended.'
+                'error': 'Account is inactive or Suspended.'
             }, status=status.HTTP_403_FORBIDDEN)
         
         # Check if token is expired (after 40 days)
@@ -203,7 +203,7 @@ def login_with_token(request):
         #print('5')
         return Response({
             #'req_access': False,
-            'error_code': '401 Invalid Token. Try to Login through Password.'
+            'error_code': 'Invalid Token. Try to Login through Password.'
         }, status=status.HTTP_401_UNAUTHORIZED)
 
 ##########################################################################################
@@ -245,13 +245,8 @@ def verify_wallet_pin(request):
 @permission_classes([HasValidTokenForUser])
 def logout(request):
     """Logout user by deactivating current token"""
-    auth_header = request.headers.get("Authorization")
+    token = request.headers.get("token")
     
-
-    if not auth_header or not auth_header.startswith("token "):
-        return False
-
-    token = auth_header.split()[1]
     try:
         token_obj = Tokens.objects.get(token=token)
         token_obj.deactivate()
@@ -266,13 +261,7 @@ def logout(request):
 @permission_classes([HasValidTokenForUser])
 def logout_all_devices(request):
     """Logout user from all devices by deactivating all tokens"""
-    auth_header = request.headers.get("Authorization")
-    
-
-    if not auth_header or not auth_header.startswith("token "):
-        return False
-
-    token = auth_header.split()[1]
+    token = request.headers.get("token")
     
     try:
         token_obj = Tokens.objects.get(token=token)
@@ -298,7 +287,7 @@ def logout_all_devices(request):
 @permission_classes([AllowAny])
 def forgot_password(request):
     identifier = request.data.get("identifier")
-    if is_phone(identifier):
+    if validate_nepali_phone(identifier):
         email = Users.objects.select_related('profile_id').get(phone=identifier, profile_status = 'ACTIVE').get_email_from_usersModel() 
         user = Users.objects.get(phone=identifier).user_id
     elif Users.objects.filter(user_id=identifier, profile_status = 'ACTIVE').exists():
@@ -324,7 +313,9 @@ def forget_password_verify_email(request):
     is_emailSent, otp = send_otp_to_email(email)
     if not is_emailSent:
         return Response({'error': 'Email not sent!'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    OTP.objects.create(user, otp, otp_type = 'FORGET_PASSWORD', created_at = timezone.now() ,expires_in=2)
+
+
+    OTP.objects.create_otp(user_id=user, otp=otp, otp_type = 'FORGET_PASSWORD', created_at = timezone.now() ,expires_in=2)
     return Response({'verified': True}, status=status.HTTP_202_ACCEPTED)
 
 
@@ -364,13 +355,19 @@ def forget_password_verify_otp(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def forget_password_change_password(request):
+    from django.contrib.auth.password_validation import validate_password
+    from django.core.exceptions import ValidationError
     user = request.data.get('user_id')
     password = request.data.get('password')
-    if is_password(password):
-        return Response({'error': 'You password is soo weak. Make Strong Password!'}, status=status.HTTP_403_FORBIDDEN)
-    userObj = Users.objects.get(user_id=user, profile_status = 'ACTIVE')
-    userObj.update_password(password)
-    UserActivity.create_activity(userObj.user_id, activity="FORGET_PASSWORD", discription="")
+    try:
+        validate_password(password)
+    except ValidationError as e:
+        return Response({
+            'error': ' '.join(e.messages)  # Joins with space
+        }, status=status.HTTP_400_BAD_REQUEST)
+    user = Users.objects.get(user_id=user, profile_status ='ACTIVE')
+    user.update_password(password)
+    UserActivity.create_activity(user.user_id, activity="FORGET_PASSWORD", discription="")
     return Response({'message': 'Password changed successfully!'}, status=status.HTTP_200_OK)
     
 

@@ -63,7 +63,7 @@ This is for the farmer he gets his incomming orders list.
 @permission_classes([HasValidTokenForUser])
 def all_incomming_orders_for_farmer(request):
 
-    user = request.headers.get('userid')
+    user = request.headers.get('user_id')
 
     data = request.data
 
@@ -120,7 +120,7 @@ This is for the consumer he gets his ordered products list.
 @permission_classes([HasValidTokenForUser])
 def all_consumer_orders(request):
 
-    user = request.headers.get('userid')
+    user = request.headers.get('user_id')
     data = request.data
     order_status = data.get('order_status')
 
@@ -158,7 +158,7 @@ def all_consumer_orders(request):
 @permission_classes([HasValidTokenForUser])
 def get_order_detail(request):
     """Get all orders for products belonging to the authenticated farmer"""
-    user = request.headers.get('userid')
+    user = request.headers.get('user_id')
     data = request.data
     order_id = data.get('order_id')
 

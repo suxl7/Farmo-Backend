@@ -106,18 +106,12 @@ class Users(models.Model):
     def check_pass(self, raw_pass):
         if self.password == raw_pass:
             return True 
-        
-        return False
 
     def update_password(self, new_password):
         """Update to a new password"""
         self.password = make_password(new_password)
         self.save(update_fields=['password'])
-
-    @property
-    def get_email_from_usersModel(self):
-        return self.profile_id.email
-    
+        
 
     def __str__(self):
         return f"User {self.user_id}"
@@ -474,7 +468,6 @@ class Tokens(models.Model):
         """Check if the token is still active"""
         return self.token_status == 'ACTIVE' and not self.is_expired
 
-    @property
     def is_expired(self):
         """Check if the token has expired"""
         return timezone.now() > self.expires_at
@@ -572,7 +565,6 @@ class OTP(models.Model):
     def get_OTP(self):
         return self.otp
     
-    @property
     def is_expired(self):
         """Check if the OTP has expired"""
         return timezone.now() > self.expires_at
