@@ -216,13 +216,15 @@ def login_change_password(request):
         return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
     # Check old password against hashed password
-    if not user.check_password(old_password, user.password):
+    if not user.check_password(old_password):
         return Response({"error": "Old password is incorrect"}, status=status.HTTP_400_BAD_REQUEST)
 
     # Update password
     user.update_password(new_password)
     user.activate_user()
-    print(new_password)
+    user.save()
+    UserActivity.create_activity(user, activity="CHANGE_PASSWORD", discription="")
+
     return Response({"message": "Password changed successfully!"}, status=status.HTTP_200_OK)
 
 
