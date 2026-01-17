@@ -10,9 +10,10 @@ from django.shortcuts import render
 ##########################################################################################
 #                            OTP for forget Password
 ##########################################################################################
-@csrf_exempt
+
 def generate_otp():
     """Generate a 6-digit OTP"""
+    print('otp generate')
     return ''.join(random.choices(string.digits, k=6))
 
 def get_otp_email_message(otp)->str:
@@ -49,9 +50,10 @@ def get_otp_email_message(otp)->str:
 # Send otp to email 
 def send_otp_to_email(email):
     """Send OTP to the specified email"""
-    
+    print("3")
     otp = generate_otp()
     
+    print("email")
     try:
         email_obj = EmailMessage(
         subject = "Farmo OTP Verification",

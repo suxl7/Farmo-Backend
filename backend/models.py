@@ -4,12 +4,13 @@ from django.contrib.auth.hashers import make_password, check_password
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 import secrets
+import random, string
 from django.core.validators import MinValueValidator, MaxValueValidator
 
 
 class UsersProfile(models.Model):
     """User profile storing detailed user information"""
-    profile_id = models.AutoField(primary_key=True)
+    profile_id = models.CharField(primary_key=True)
     profile_url = models.CharField(max_length=255, blank=True, null=True)
     f_name = models.CharField(max_length=50)
     m_name = models.CharField(max_length=50, blank=True, null=True)
@@ -52,7 +53,12 @@ class UsersProfile(models.Model):
 
     @classmethod
     def create_profile(cls, profile_url,f_name, m_name, l_name, user_type, province, district, municipal, ward, tole, dob, sex, phone02, email, facebook, whatsapp, about):
-        obj = cls.objects.create(
+        print(1)
+        profile_id = f_name[0].upper() + l_name[0].upper() +'-' +''.join(random.choices(string.digits, k=8))
+        print(id)
+        print(2)
+        return cls.objects.create(
+            profile_id=profile_id,
             profile_url=profile_url,
             f_name=f_name,
             m_name=m_name,
@@ -72,7 +78,7 @@ class UsersProfile(models.Model):
             about=about,
             join_date=timezone.now()
         )
-        return obj.profile_id
+        
 
     def __str__(self):
         return f"{self.f_name} {self.l_name}"
@@ -93,7 +99,7 @@ class Users(models.Model):
 
     profile_status = models.CharField(max_length=20, default='ACTIVATED')
     is_admin = models.BooleanField(default=False)
-    profile_id = models.ForeignKey(UsersProfile, on_delete=models.PROTECT)
+    profile_id = models.ForeignKey(UsersProfile, on_delete=models.CASCADE)
 
     def set_password(self, raw_password):
         """Hash and store password securely"""
@@ -111,6 +117,12 @@ class Users(models.Model):
         """Update to a new password"""
         self.password = make_password(new_password)
         self.save(update_fields=['password'])
+
+    def get_email_from_userModel(self):
+        return self.profile_id.email
+    
+    def get_phone_from_userModel(self):
+        return self.phone
         
 
     def __str__(self):
@@ -513,8 +525,8 @@ class Connections(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
     
     def __str__(self):
-        return f"{self.user.user_id} -> {self.target_user.user_id} ({self.status})"
-
+        #return f"{self.user.user_id} -> {self.target_user.user_id} ({self.status})"
+        return f"{self.user} -> {self.target_user} ({self.status})"
 
     class Meta:
         constraints = [
@@ -533,7 +545,7 @@ class PaymentMethodAccepts(models.Model):
     """Track accepted payment methods for each user"""
     pm_id = models.AutoField(primary_key=True)
     user_id = models.ForeignKey(Users, on_delete=models.CASCADE)
-    payment_method = models.JSONField(max_length=50, default=list, blank=True) # e.g. WALLET, COD, KHALTI, ESEWA
+    payment_method = models.JSONField(max_length=50, default=list, blank=True) # e.g. WALLET, COD, KHALTI
 
     @property
     def get_payment_methods(self):
@@ -541,7 +553,7 @@ class PaymentMethodAccepts(models.Model):
         return self.payment_method
     
     def __str__(self):
-        return f"{self.user_id} - {self.payment_method} ({'Active' if self.is_active else 'Inactive'})"
+        return f"{self.user_id} - {self.payment_method}"
     
 
 
@@ -567,7 +579,7 @@ class OTP(models.Model):
         return timezone.now() > self.expires_at
 
 
-    @property
+
     def effective_status_OTP(self):
         """Check if the OTP is still active"""
         if self.otp_status == 'ACTIVE' and not self.is_expired():

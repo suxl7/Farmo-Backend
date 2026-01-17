@@ -59,11 +59,7 @@ def login(request):
     password = request.data.get('password')
     is_admin = request.data.get('is_admin', False)
     device_info = request.data.get('device_info', '')
-    print(identifier)
-    print(password)
-    print(is_admin)
-    print(device_info)
-    
+ 
     if not identifier or not password:
         return Response({
             #'req_access': False,
@@ -80,7 +76,7 @@ def login(request):
             user_type = 'Consumer'
         
         # Verify password
-        if not user.check_pass(password):
+        if not user.check_password(password):
             return Response({
                 #'req_access': False,
                 'error': 'Credintials is incorrect.'
@@ -206,6 +202,25 @@ def login_with_token(request):
             'error_code': 'Invalid Token. Try to Login through Password.'
         }, status=status.HTTP_401_UNAUTHORIZED)
 
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def login_change_password(request):
+    user = request.data.get('user_id')
+    password = request.data.get('old_password')
+    new_password = request.data.get('new_password')
+    
+    try:
+        user = Users.objects.get(user_id=user, password=password)
+        user.set_password(new_password)
+        user.save()
+    except Users.DoesNotExist:
+        return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+    return Response({"message": "Password changed successfully!"}, status=status.HTTP_200_OK)
+    
+
+    
 ##########################################################################################
 #                            Login
 ##########################################################################################
@@ -287,37 +302,61 @@ def logout_all_devices(request):
 @permission_classes([AllowAny])
 def forgot_password(request):
     identifier = request.data.get("identifier")
-    if validate_nepali_phone(identifier):
-        email = Users.objects.select_related('profile_id').get(phone=identifier, profile_status = 'ACTIVE').get_email_from_usersModel() 
-        user = Users.objects.get(phone=identifier).user_id
-    elif Users.objects.filter(user_id=identifier, profile_status = 'ACTIVE').exists():
-        email = Users.objects.select_related('profile_id').get(user_id=identifier).get_email_from_usersModel()
-        user = identifier
+    print(identifier)
+
+    # Filter for activated user by user_id or phone
+    user_qs = Users.objects.select_related('profile_id').filter(
+        Q(user_id=identifier) | Q(phone=identifier),
+        profile_status='ACTIVATED'
+    )
+
+    if user_qs.exists():
+        user = user_qs.first()  # Get the actual user instance
+        email = user.get_email_from_userModel()
+        user_id = user.user_id
     else:
+        print("not found")
         return Response({'error': 'User not found!'}, status=status.HTTP_404_NOT_FOUND)
-    
+
+    print(email)
+    print(user_id)
     half_email = get_half_email(email)
-    return Response({'half_email': half_email, 'user_id': user}, status=status.HTTP_202_ACCEPTED)
+    return Response({'half_email': half_email, 'user_id': user_id}, status=status.HTTP_202_ACCEPTED)
+
 
 
 ## verify Email to send OTP
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def forget_password_verify_email(request):
-    user = request.data.get('user_id')
+    user_id = request.data.get('user_id')
     email = request.data.get('email')
-    userObj = Users.objects.get(user_id=user, profile_status = 'ACTIVE')
-    if userObj.get_email_from_usersModel() != email:
+
+    try:
+        userObj = Users.objects.select_related('profile_id').get(
+            user_id=user_id,
+            profile_status='ACTIVATED'
+        )
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found!'}, status=status.HTTP_404_NOT_FOUND)
+
+    if userObj.get_email_from_userModel() != email:
         return Response({'error': 'Invalid email!'}, status=status.HTTP_400_BAD_REQUEST)
-    
+
+    print("1")
     is_emailSent, otp = send_otp_to_email(email)
     if not is_emailSent:
         return Response({'error': 'Email not sent!'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-    OTP.objects.create_otp(user_id=user, otp=otp, otp_type = 'FORGET_PASSWORD', created_at = timezone.now() ,expires_in=2)
-    return Response({'verified': True}, status=status.HTTP_202_ACCEPTED)
-
+    OTP.create_otp(
+        user=userObj,
+        otp=otp,
+        otp_type='FORGET_PASSWORD',
+        created_at=timezone.now(),
+        expires_in=2
+    )
+    print("2")
+    return Response({'verification': "True"}, status=status.HTTP_202_ACCEPTED)
 
 ## Confirm OTP
 @api_view(['POST'])
@@ -336,7 +375,7 @@ def forget_password_verify_otp(request):
         return Response({'error': 'No OTP found'}, status=status.HTTP_404_NOT_FOUND)
 
     # Check effective status
-    if otp_obj.effective_status_OTP != 'ACTIVE':
+    if otp_obj.effective_status_OTP() != 'ACTIVE':
         return Response({'error': 'OTP expired'}, status=status.HTTP_400_BAD_REQUEST)
 
     # Compare values
@@ -365,9 +404,9 @@ def forget_password_change_password(request):
         return Response({
             'error': ' '.join(e.messages)  # Joins with space
         }, status=status.HTTP_400_BAD_REQUEST)
-    user = Users.objects.get(user_id=user, profile_status ='ACTIVE')
+    user = Users.objects.get(user_id=user, profile_status ='ACTIVATED')
     user.update_password(password)
-    UserActivity.create_activity(user.user_id, activity="FORGET_PASSWORD", discription="")
+    UserActivity.create_activity(user, activity="FORGET_PASSWORD", discription="")
     return Response({'message': 'Password changed successfully!'}, status=status.HTTP_200_OK)
     
 

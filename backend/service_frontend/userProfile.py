@@ -1,9 +1,10 @@
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
-from backend.permissions import HasValidTokenForUser
+from backend.permissions import HasValidTokenForUser, IsAdmin
 from rest_framework.response import Response
 from rest_framework import status
-from backend.models import Users, UsersProfile, UserActivity, PaymentMethodAccepts
+from backend.models import Users, UsersProfile, UserActivity, PaymentMethodAccepts, Verification as Ver
+from backend.serializers import VerificationSerializer as VS
 import secrets
 from django.utils import timezone
 from django.utils.crypto import get_random_string
@@ -11,6 +12,7 @@ from backend.utils.media_handler import FileManager
 from backend.utils.validators import validate_email_format, validate_nepali_phone , validate_facebook_url, validate_whatsapp, validate_first_name, validate_last_name, validate_middle_name
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from rest_framework.views import APIView
 
 
 
@@ -23,7 +25,7 @@ from django.core.exceptions import ValidationError
 @permission_classes([AllowAny])
 def register(request):
     """Register new user with profile"""
-    created_by = request.data.get('created_by')
+    created_by = request.data.get('created_by') # Admin or Itself
 
     user_id = request.data.get('user_id')
     f_name = request.data.get('f_name') # required
@@ -47,7 +49,7 @@ def register(request):
     
     profile_picture = request.FILES.get('profile_picture', None)
 
-    join_date = timezone.now()
+    #join_date = timezone.now()
 
     from django.utils.dateparse import parse_date
     dob = parse_date(dob_str)
@@ -136,7 +138,8 @@ def register(request):
         
         profile_picture_url = result['file_url']
     
-    profile = UsersProfile.objects.create_profile(
+    # print(0)
+    profile = UsersProfile.create_profile(
         profile_url=profile_picture_url or None,
         f_name=f_name,
         m_name=m_name or None,
@@ -155,7 +158,9 @@ def register(request):
         whatsapp=whatsapp or None,
         about=about or None,
     )
-
+    # print(3)
+    # print(profile.profile_id)
+    # print(4)
     if created_by in ['Admin', 'SuperAdmin']:
         profile_status = 'PENDING'
     else:
@@ -185,7 +190,9 @@ def register(request):
 ##########################################################################################
 #                            Verification Start
 ##########################################################################################
-
+'''
+This is for the users to send verification request.
+'''
 @api_view(['POST'])
 @permission_classes([HasValidTokenForUser])
 def verification_request(request):
@@ -240,11 +247,29 @@ def verification_request(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     
     # TODO: Save to Verification model
+    Ver.objects.create()
 
     return Response({
         'message': 'Verification request submitted successfully.'
     }, status=status.HTTP_200_OK)
 
+
+@api_view(['POST'])
+@permission_classes([HasValidTokenForUser, IsAdmin])
+def verification_response(request):
+    v_user = request.data.get("user_id")
+    ver_obj = Ver.objects.get(user_id = v_user)
+    
+
+
+# class get_Verification(APIView):
+#     permission_classes = [HasValidTokenForUser, IsAdmin]
+#     def post(self, request):
+#         serializer = Ver(data=request.data)
+#         if serializer.is_valid():
+#             serializer.save()
+#             return Response(serializer.data, status=status.HTTP_201_CREATED)
+#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 ##########################################################################################
 #                            verification
@@ -331,7 +356,10 @@ def add_payment_method(request):
             'error': str(e)
         }, status=status.HTTP_400_BAD_REQUEST)
     
-
+'''
+This methods is for get all available payment methods of farmer.
+Like: Cash on Delivery, System Wallet, External Wallet like khalti, esewa, etc.
+'''
 @api_view(['POST'])
 @permission_classes([HasValidTokenForUser])
 def get_payment_method(request):

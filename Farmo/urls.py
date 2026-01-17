@@ -22,8 +22,14 @@ from backend.service_frontend.authentication import (
     login, 
     verify_wallet_pin, 
     login_with_token, 
+    login_change_password,
     logout, 
-    logout_all_devices)
+    logout_all_devices,
+    forgot_password,
+    forget_password_change_password,
+    forget_password_verify_email,
+    forget_password_verify_otp
+    )
 from backend.service_frontend.servicesActivity import (
     get_online_status, 
     check_userid_available, 
@@ -77,12 +83,17 @@ from backend.service_frontend.servicesRating import (
 urlpatterns = [
     #path('admin/', admin.site.urls),
     # Authentication
-    path('api/auth/register/', register, name='register'),
     path('api/auth/check-userid/', check_userid_available, name='check_userid_available'),
     path('api/auth/login/', login, name='login'), # checked
     path('api/auth/login-with-token/', login_with_token, name='login_with_token'), # checked
+    path('api/auth/login-change-password/', login_change_password, name='login_change_password'),
     path('api/auth/logout/', logout, name='logout'),
     path('api/auth/logout-all/', logout_all_devices, name='logout_all_devices'),
+    path('api/auth/register/', register, name='register'), # checked
+    path('api/auth/forgot-password/', forgot_password, name='forgot_password'), # checked
+    path('api/auth/forget-password-verify-email/', forget_password_verify_email, name='forget_password_verify_email'), # checked
+    path('api/auth/forget-password-verify-otp/', forget_password_verify_otp, name='forget_password_verify_otp'), # checked
+    path('api/auth/forget-password-change-password/', forget_password_change_password, name='forget_password_change_password'), # checked
     # User
     path('api/user/update-profile-picture/', update_profile_picture, name='update_profile_picture'),
     path('api/user/verification-request/', verification_request, name='verification_request'),
