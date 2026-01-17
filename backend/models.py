@@ -118,6 +118,11 @@ class Users(models.Model):
         self.password = make_password(new_password)
         self.save(update_fields=['password'])
 
+    def activate_user(self):
+        """Activate the user"""
+        self.profile_status = 'ACTIVATED'
+        self.save(update_fields=['profile_status'])
+
     def get_email_from_userModel(self):
         return self.profile_id.email
     

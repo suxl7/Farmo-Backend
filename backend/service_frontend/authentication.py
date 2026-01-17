@@ -206,19 +206,26 @@ def login_with_token(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_change_password(request):
-    user = request.data.get('user_id')
-    password = request.data.get('old_password')
+    user_id = request.data.get('user_id')
+    old_password = request.data.get('old_password')
     new_password = request.data.get('new_password')
-    
+
     try:
-        user = Users.objects.get(user_id=user, password=password)
-        user.set_password(new_password)
-        user.save()
+        user = Users.objects.get(user_id=user_id)
     except Users.DoesNotExist:
         return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
-    
+
+    # Check old password against hashed password
+    if not user.check_password(old_password, user.password):
+        return Response({"error": "Old password is incorrect"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Update password
+    user.update_password(new_password)
+    user.activate_user()
+    print(new_password)
     return Response({"message": "Password changed successfully!"}, status=status.HTTP_200_OK)
-    
+
+
 
     
 ##########################################################################################
