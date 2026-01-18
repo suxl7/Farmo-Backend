@@ -306,8 +306,9 @@ def update_profile_picture(request):
     profile = UsersProfile.objects.get(user_id=user_id)
     profile.profile_url = result['file_url']
     profile.save()
-    
-    UserActivity.create_activity(request.user, activity="UPDATE_PROFILE_PIC", discription="")
+    user_obj = Users.objects.get(user_id=request.user)
+
+    UserActivity.create_activity(user_obj, activity="UPDATE_PROFILE_PIC", discription="")
 
     return Response({
         'message': 'Profile picture updated successfully.'

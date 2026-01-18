@@ -123,6 +123,10 @@ class Users(models.Model):
         self.profile_status = 'ACTIVATED'
         self.save(update_fields=['profile_status'])
 
+    def get_full_name_from_userModel(self):
+        return self.profile_id.get_Full_Name
+    
+
     def get_email_from_userModel(self):
         return self.profile_id.email
     
@@ -619,3 +623,21 @@ class OTP(models.Model):
                 name='valid_otp_status'
             )
         ]
+
+class TrackUser(models.Model):
+    user_id = models.ForeignKey(Users, on_delete=models.CASCADE)
+    product_catagory = models.CharField(max_length=50, blank=True, null=True)
+    score = models.BigIntegerField(blank=True, null=True)
+    
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user_id", "product_catagory"])
+        ]
+
+
+    def __str__(self):
+        return f"{self.user_id} - {self.product_catagory}"
+
+
+    

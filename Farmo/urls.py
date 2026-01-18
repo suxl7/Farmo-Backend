@@ -76,7 +76,10 @@ from backend.service_frontend.servicesRating import (
     ViewProductRate,
     DeleteProductRate,
     ListProductRatingsByProduct,
-    product_profile_rating
+    product_profile_rating,
+
+    # Top rated user
+    top_rated_farmers
 )
 
 
@@ -91,9 +94,9 @@ urlpatterns = [
     path('api/auth/logout-all/', logout_all_devices, name='logout_all_devices'),
     path('api/auth/register/', register, name='register'), # checked
     path('api/auth/forgot-password/', forgot_password, name='forgot_password'), # checked
-    path('api/auth/forget-password-verify-email/', forget_password_verify_email, name='forget_password_verify_email'), # checked
-    path('api/auth/forget-password-verify-otp/', forget_password_verify_otp, name='forget_password_verify_otp'), # checked
-    path('api/auth/forget-password-change-password/', forget_password_change_password, name='forget_password_change_password'), # checked
+    path('api/auth/forgot-password-verify-email/', forget_password_verify_email, name='forget_password_verify_email'), # checked
+    path('api/auth/forgot-password-verify-otp/', forget_password_verify_otp, name='forget_password_verify_otp'), # checked
+    path('api/auth/forgot-password-change-password/', forget_password_change_password, name='forget_password_change_password'), # checked
     # User
     path('api/user/update-profile-picture/', update_profile_picture, name='update_profile_picture'),
     path('api/user/verification-request/', verification_request, name='verification_request'),
@@ -108,7 +111,7 @@ urlpatterns = [
     path('api/user/address/', get_address, name='get_address'),
     path('api/user/payment-method/', add_payment_method, name='add_payment_method'),
     path('api/user/get-payment-method/', get_payment_method, name='get_payment_method'),
-    # Ratingo
+    # Rating
     path('api/rating/farmer/create/', RateFarmer.as_view(), name='rate_farmer'),
     path('api/rating/farmer/edit/<int:pk>/', EditFarmerRate.as_view(), name='edit_farmer_rate'),
     path('api/rating/farmer/view/<int:pk>/', ViewFarmerRate.as_view(), name='view_farmer_rate'),
@@ -131,7 +134,8 @@ urlpatterns = [
     path('api/rating/product/view/<int:pk>/', ViewProductRate.as_view(), name='view_product_rate'),
     path('api/rating/product/delete/<int:pk>/', DeleteProductRate.as_view(), name='delete_product_rate'),
     path('api/rating/product/list/<int:product_id>/', ListProductRatingsByProduct.as_view(), name='list_product_ratings_by_product'),
-    path('api/rating/product/profile/', product_profile_rating, name='product_profile_rating')
+    path('api/rating/product/profile/', product_profile_rating, name='product_profile_rating'),
+    path('api/rating/top-rated-farmers/', top_rated_farmers, name='top_rated_farmers'),
 ]
 
 # Serve media files during development

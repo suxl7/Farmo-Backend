@@ -8,13 +8,15 @@ from rest_framework.response import Response
 from backend.models import Users
 from backend.permissions import HasValidTokenForUser
 from django.core.exceptions import ObjectDoesNotExist
+from rest_framework.permissions import AllowAny
 
 
 @api_view(['POST'])
-@permission_classes([HasValidTokenForUser])
+@permission_classes([AllowAny])
 def check_userid_available(request):
     """Check if userID is available"""
     user_id = request.data.get('user_id')
+
     if not user_id:
         return Response({'status': 1}, status=status.HTTP_200_OK)
     
@@ -48,7 +50,7 @@ def get_online_status(request):
     except (Users.DoesNotExist, UserActivity.DoesNotExist):
         status = "offline"
 
-    return Response({"status": status})
+    return Response({"status": status}, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])

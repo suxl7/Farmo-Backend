@@ -7,7 +7,7 @@ from backend.permissions import HasValidTokenForUser, IsFarmer, IsConsumer
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.views import APIView
-from django.db.models import Avg
+from django.db.models import Avg, Count
 
 
 ##########################################################################################
@@ -320,5 +320,62 @@ def product_profile_rating(request):
 
 ##########################################################################################
 #                            Product Rating End
+##########################################################################################
+ 
+
+##########################################################################################
+#                            Top Rated Farmer and Consumer
+##########################################################################################
+def format_number(num: int) -> str:
+    """Format numbers into human-readable strings like 1k, 1M, 103K"""
+    if num >= 1_000_000:
+        return f"{num // 1_000_000}M"
+    elif num >= 1_000:
+        # Show in K (e.g., 103K)
+        return f"{num // 1_000}K"
+    else:
+        return str(num)
+
+def topratedfarmerlist():
+    """Helper function to get top 5 rated farmers with filters"""
+    return (
+        Rating.objects.filter(rated_for="Farmer")
+        .values("rated_to")
+        .annotate(
+            total_ratings=Count("id"),
+            avg_score=Avg("score")
+        )
+        .filter(avg_score__gte=6, total_ratings__gte=100)
+        .order_by("-total_ratings", "-avg_score")[:5]
+    )
+
+@api_view(['POST'])
+@permission_classes([HasValidTokenForUser])
+def top_rated_farmers(request):
+    """Return top 5 farmers ranked by number of ratings and average score"""
+    top_farmers = topratedfarmerlist()
+
+    farmer_ids = [f["rated_to"] for f in top_farmers]
+    farmers = Users.objects.filter(pk__in=farmer_ids)
+
+    farmer_stats = {
+        f["rated_to"]: {"total_ratings": f["total_ratings"], "avg_score": f["avg_score"]}
+        for f in top_farmers
+    }
+
+    result = []
+    for farmer in farmers:
+        stats = farmer_stats[farmer.pk]
+        result.append({
+            "farmer_id": farmer.pk,
+            "Name": farmer.get_full_name_from_userModel(),
+            "total_ratings": format_number(stats["total_ratings"]),  # formatted
+            "avg_score": round(stats["avg_score"], 2),
+        })
+
+    return Response({"top_farmers": result}, status=status.HTTP_200_OK)
+
+##########################################################################################
+#                            Top Rated Farmer and Consumer End
 ##########################################################################################
  

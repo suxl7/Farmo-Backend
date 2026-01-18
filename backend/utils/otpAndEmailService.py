@@ -13,47 +13,109 @@ from django.shortcuts import render
 
 def generate_otp():
     """Generate a 6-digit OTP"""
-    print('otp generate')
+
     return ''.join(random.choices(string.digits, k=6))
 
 def get_otp_email_message(otp)->str:
     """Generate the email message with OTP"""
     html_message = f"""
-            <html>
-              <body style="font-family: 'Segoe UI', sans-serif; background-color: #f9f9f9; padding: 20px; color: #333;">
-                <div style="max-width: 600px; margin: auto; background-color: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-                  <h2 style="color: #2E8B57; border-bottom: 1px solid #eee; padding-bottom: 10px;">Farmo Security Notification</h2>
-
-                  <p>Hello,</p>
-                  <p>We received a request to reset your Farmo account password.</p>
-
-                  <p style="font-size: 18px; margin: 20px 0;">
-                    <strong>Your OTP code:</strong><br>
-                    <span style="font-size: 28px; font-weight: bold; color: #2E8B57;">{otp}</span><br>
-                    <em>(Expires in 10 minutes)</em>
-                  </p>
-
-                  <p>If you did not request this, please ignore the message or contact support immediately.</p>
-
-                  <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
-
-                  <p style="font-size: 0.9em; color: #777;">
-                    Farmo will never ask for your password or financial details via email. If you receive suspicious messages, do not click any links and report them to our support team.
-                  </p>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            body {{
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background-color: #f4f4f4;
+                margin: 0;
+                padding: 0;
+                -webkit-font-smoothing: antialiased;
+            }}
+            .container {{
+                max-width: 600px;
+                margin: 20px auto;
+                background-color: #ffffff;
+                border-radius: 8px;
+                overflow: hidden;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            }}
+            .content {{
+                padding: 40px;
+                color: #333333;
+                line-height: 1.6;
+            }}
+            .header-title {{
+                color: #2E8B57;
+                font-size: 24px;
+                font-weight: bold;
+                margin-bottom: 20px;
+                border-bottom: 2px solid #f0f0f0;
+                padding-bottom: 10px;
+            }}
+            .otp-container {{
+                background-color: #f9f9f9;
+                border: 1px dashed #2E8B57;
+                border-radius: 6px;
+                padding: 20px;
+                margin: 25px 0;
+                text-align: center;
+            }}
+            .otp-code {{
+                font-size: 36px;
+                font-weight: bold;
+                color: #2E8B57;
+                letter-spacing: 5px;
+                display: block;
+            }}
+            .expiry-text {{
+                font-size: 14px;
+                color: #777777;
+                font-style: italic;
+            }}
+            .footer {{
+                background-color: #fafafa;
+                padding: 20px 40px;
+                font-size: 12px;
+                color: #999999;
+                border-top: 1px solid #eeeeee;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="content">
+                <div class="header-title">Farmo Security Notification</div>
+                
+                <p>Hello,</p>
+                <p>We received a request to reset your Farmo account password. Please use the following One-Time Password (OTP) to proceed:</p>
+                
+                <div class="otp-container">
+                    <span class="otp-code">{otp}</span>
+                    <span class="expiry-text">(This code expires in 10 minutes)</span>
                 </div>
-              </body>
-            </html>
-            """,
+                
+                <p>If you did not request this password reset, you can safely ignore this email. Your password will remain unchanged.</p>
+            </div>
+            
+            <div class="footer">
+                Farmo will never ask for your password or financial details via email. 
+                If you receive suspicious messages, do not click any links and report them to our support team.
+                <br><br>
+                &copy; 2026 Farmo Inc.
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
     return html_message
 
 
 # Send otp to email 
 def send_otp_to_email(email):
     """Send OTP to the specified email"""
-    print("3")
     otp = generate_otp()
     
-    print("email")
     try:
         email_obj = EmailMessage(
         subject = "Farmo OTP Verification",

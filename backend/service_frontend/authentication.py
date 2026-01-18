@@ -104,7 +104,6 @@ def login(request):
         UserActivity.create_activity(user=user, activity="LOGIN", discription="")
         
         # Return response according to documentation
-        print('login successful!')
         return Response({
            # 'req_access': True,  # Changed from login_access
             'token': token,
@@ -311,7 +310,6 @@ def logout_all_devices(request):
 @permission_classes([AllowAny])
 def forgot_password(request):
     identifier = request.data.get("identifier")
-    print(identifier)
 
     # Filter for activated user by user_id or phone
     user_qs = Users.objects.select_related('profile_id').filter(
@@ -324,11 +322,10 @@ def forgot_password(request):
         email = user.get_email_from_userModel()
         user_id = user.user_id
     else:
-        print("not found")
+
         return Response({'error': 'User not found!'}, status=status.HTTP_404_NOT_FOUND)
 
-    print(email)
-    print(user_id)
+
     half_email = get_half_email(email)
     return Response({'half_email': half_email, 'user_id': user_id}, status=status.HTTP_202_ACCEPTED)
 
@@ -347,12 +344,11 @@ def forget_password_verify_email(request):
             profile_status='ACTIVATED'
         )
     except Users.DoesNotExist:
-        return Response({'error': 'User not found!'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': 'Invalid email!'}, status=status.HTTP_404_NOT_FOUND)
 
     if userObj.get_email_from_userModel() != email:
         return Response({'error': 'Invalid email!'}, status=status.HTTP_400_BAD_REQUEST)
 
-    print("1")
     is_emailSent, otp = send_otp_to_email(email)
     if not is_emailSent:
         return Response({'error': 'Email not sent!'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -362,10 +358,9 @@ def forget_password_verify_email(request):
         otp=otp,
         otp_type='FORGET_PASSWORD',
         created_at=timezone.now(),
-        expires_in=2
+        expires_in=10
     )
-    print("2")
-    return Response({'verification': "True"}, status=status.HTTP_202_ACCEPTED)
+    return Response({'verification': "True"}, status=status.HTTP_200_OK)
 
 ## Confirm OTP
 @api_view(['POST'])
@@ -395,7 +390,7 @@ def forget_password_verify_otp(request):
     otp_obj.otp_status = 'USED'
     otp_obj.save(update_fields=['otp_status'])
 
-    return Response({'verified': True}, status=status.HTTP_202_ACCEPTED)
+    return Response({'verified': True}, status=status.HTTP_200_OK)
 
 
 
