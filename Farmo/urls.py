@@ -40,7 +40,8 @@ from backend.service_frontend.userProfile import (
     update_profile_picture, 
     get_payment_method, 
     add_payment_method)
-from backend.service_frontend.servicesProfile import view_profile
+from backend.service_frontend.servicesProfile import (
+    profile_details as view_profile)
 from backend.service_frontend.orders import (
     order_request, 
     get_order_detail, 
@@ -81,6 +82,7 @@ from backend.service_frontend.servicesRating import (
     # Top rated user
     top_rated_farmers
 )
+from backend.service_frontend.serviceHome import *
 
 
 urlpatterns = [
@@ -102,7 +104,6 @@ urlpatterns = [
     path('api/user/verification-request/', verification_request, name='verification_request'),
     path('api/user/online-status/', get_online_status, name='get_online_status'),
     path('api/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin'),
-    path('api/user/profile/', view_profile, name='view_profile'),
     path('api/farmer/order-request/', order_request, name='order_request'),
     path('api/farmer/all-incomming-orders/', all_incomming_orders_for_farmer, name='all_incomming_orders_for_farmer'),
     path('api/consumer/all-orders/', all_consumer_orders, name='all_consumer_orders'),
@@ -136,6 +137,10 @@ urlpatterns = [
     path('api/rating/product/list/<int:product_id>/', ListProductRatingsByProduct.as_view(), name='list_product_ratings_by_product'),
     path('api/rating/product/profile/', product_profile_rating, name='product_profile_rating'),
     path('api/rating/top-rated-farmers/', top_rated_farmers, name='top_rated_farmers'),
+    # Home
+    path('api/home/dashboard/', dashboard_fullfillment, name='dashboard_fullfillment'),
+    # Profile
+    path('api/profile/', view_profile, name='view_profile'),
 ]
 
 # Serve media files during development

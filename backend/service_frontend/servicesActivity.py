@@ -57,7 +57,7 @@ def get_online_status(request):
 @permission_classes([HasValidTokenForUser])
 def get_address(request):
     """Get the address for an order"""
-    user = request.headers.get('userid')
+    user = request.headers.get('user-id')
     address_of = request.data.get('address_of')
     user_id = request.data.get('userid') if request.data.get('userid') else None
 

@@ -1,8 +1,9 @@
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes 
 from rest_framework.response import Response
 from rest_framework import status
 from backend.models import Users, Verification, Product, Connections, OrderRequest, OrdProdLink, Wallet, OrdProdLink
 from backend.permissions import HasValidTokenForUser
+from rest_framework.permissions import AllowAny
 from django.db.models import Q, Sum, F
 from django.utils import timezone
  
@@ -11,37 +12,52 @@ from django.utils import timezone
 @api_view(['POST'])
 @permission_classes([HasValidTokenForUser])
 def dashboard_fullfillment(request):
-    userid = request.headers.get('userid')
-    user = Users.objects.get(user_id=userid)
-    #print(userid)
+    user_id = request.headers.get('user-id')
+    
+    # ✅ consistent key
+    try:
+        user = Users.objects.get(user_id=user_id)
+    except Users.DoesNotExist:
+        return Response({'detail': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
     if user.is_admin:
         return Response({
-        'total_farmers': get_total_farmers(),
-        'active_products': get_active_products(),
-        'total_consumers': get_total_consumers(),
-        'verification_requests': get_verification_requests()
-        }, status=status.HTTP_200_OK)
-    
-    elif user.profile_id.user_type in ['Farmer', 'VerifiedFarmer']:
-        return Response({
-        'connections': get_user_total_connections(request.userid),
-        'wallet_balance': get_wallet_balance(request.userid),
-        'todays_income': get_todays_income(request.userid),
-        'total_orders': get_farmer_orderRequests(request.userid)
-        }, status=status.HTTP_200_OK)
-    
-    elif user.profile_id.user_type in  ['Consumer', 'VerifiedConsumer']:
-        return Response({
-        'connections': get_user_total_connections(request.userid),
-        'order_requests': get_orderRequested_by_consumer(request.userid)
+            'total_farmers': get_total_farmers(),
+            'active_products': get_active_products(),
+            'total_consumers': get_total_consumers(),
+            'verification_requests': get_verification_requests()
         }, status=status.HTTP_200_OK)
 
+    elif user.profile_id.user_type in ['Farmer', 'VerifiedFarmer']:
+        return Response({
+            'connections': get_user_total_connections(user_id),
+            'wallet_balance': get_wallet_balance(user_id),
+            'todays_income': get_todays_income(user_id),
+            'total_orders': get_farmer_orderRequests(user_id)
+        }, status=status.HTTP_200_OK)
+
+    elif user.profile_id.user_type in ['Consumer', 'VerifiedConsumer']:
+        return Response({
+            'connections': get_user_total_connections(user_id),
+            'order_requests': get_orderRequested_by_consumer(user_id)
+        }, status=status.HTTP_200_OK)
+
+    return Response({'detail': 'Unauthorized user type'}, status=status.HTTP_403_FORBIDDEN)
+
+
+
+# def get_total_farmers():
+#     return Users.objects.filter(
+#         profile_id__user_type='Farmer',
+#         profile_status='ACTIVATED'
+#         ).count()
+from django.db.models import Q
 
 def get_total_farmers():
     return Users.objects.filter(
-        profile_id__user_type='Farmer',
-        profile_status='ACTIVATED'
-        ).count()
+        Q(profile_id__user_type='Farmer', profile_status='ACTIVATED') |
+        Q(profile_id__user_type='VerifiedFarmer', profile_status='ACTIVATED')
+    ).count()
 
 def get_active_products():
     return Product.objects.filter(product_status='AVAILABLE').count()

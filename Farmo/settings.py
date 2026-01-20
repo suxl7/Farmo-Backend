@@ -143,6 +143,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 #AUTH_USER_MODEL = 'backend.Users'
 
 REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [],
 
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
@@ -179,6 +180,13 @@ CORS_ALLOW_ALL_ORIGINS = True
     'http://192.168.10.145:5173'
 ]'''
 CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_HEADERS = [
+    'content-type',
+    'token',
+    'userid',
+    'ngrok-skip-browser-warning',
+]
 
 # Production Security Settings
 SECURE_BROWSER_XSS_FILTER = True

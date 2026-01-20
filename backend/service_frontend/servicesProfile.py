@@ -8,20 +8,18 @@ from rest_framework.permissions import  AllowAny
 
 @api_view(['POST'])
 @permission_classes([HasValidTokenForUser])
-def view_profile(request):
+def profile_details(request):
     """Protected view - requires valid token"""
-    user = request.headers.get('userid')
+    user = request.headers.get('user-id')
     user = Users.objects.get(user_id=user)
     try:
         profile = UsersProfile.objects.get(profile_id=user.profile_id)
         return Response({
             'user_id': user.user_id,
             'phone': user.phone,
-            'profile': {
-                'name': f"{profile.f_name} {profile.l_name}",
-                'email': profile.email,
-                'join_date': profile.join_date
-            }
+            'name': user.get_full_name_from_userModel(),
+            'email': profile.email,
+            'join_date': profile.join_date
         }, status=status.HTTP_200_OK)
     except UsersProfile.DoesNotExist:
         return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)

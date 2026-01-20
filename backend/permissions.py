@@ -12,7 +12,7 @@ class ConnectionOnly(BasePermission):
 
     def has_permission(self, request, view):
         
-        requester_id = request.headers.get("user_id")
+        requester_id = request.headers.get("user-id")
         target_id = request.data.get("target_user")
 
         if not requester_id or not target_id:
@@ -37,10 +37,11 @@ class HasValidTokenForUser(BasePermission):
         # token: <token_value>
         # user_id: <user_id>
         token_value = request.headers.get("token")
-        user_id = request.headers.get("user_id")
+        user_id = request.headers.get("user-id")
 
-        if not token_value or not user_id:
-            return False
+        # if not token_value or not user_id:
+        #     print("0inactive")
+        #     return False
 
         try:
             token_obj = Tokens.objects.get(token=token_value, user_id__user_id=user_id)
@@ -48,11 +49,9 @@ class HasValidTokenForUser(BasePermission):
             return False
 
         # Check token status and expiry
-        if token_obj.token_status != "ACTIVE":
+        if token_obj.is_active:
             return False
-        if token_obj.expires_at < timezone.now():
-            return False
-
+  
         return True
 
 
@@ -62,7 +61,7 @@ class IsFarmer(BasePermission):
     def has_permission(self, request, view):
         # Expect frontend to send headers:
         # user_id: <user_id>
-        user_id = request.headers.get("user_id")
+        user_id = request.headers.get("user-id")
 
         if not user_id:
             return False
@@ -80,7 +79,7 @@ class IsConsumer(BasePermission):
     def has_permission(self, request, view):
         # Expect frontend to send headers:
         # user_id: <user_id>
-        user_id = request.headers.get("user_id")
+        user_id = request.headers.get("user-id")
 
         if not user_id:
             return False
@@ -97,7 +96,7 @@ class IsAdmin(BasePermission):
     def has_permission(self, request, view):
         # Expect frontend to send headers:
         # user_id: <user_id>
-        user_id = request.headers.get("user_id")
+        user_id = request.headers.get("user-id")
 
         if not user_id:
             return False
@@ -114,12 +113,13 @@ class IsSuperAdmin(BasePermission):
     def has_permission(self, request, view):
         # Expect frontend to send headers:
         # user_id: <user_id>
-        user_id = request.headers.get("user_id")
+        user_id = request.headers.get("user-id")
 
         if not user_id :
             return False
 
-        user_type = Users.objects.get(user_id=user_id).profile_id.user_type
+        #user_type = Users.objects.get(user_id=user_id).profile_id.user_type
+        user_type = Users.objects.get(user_id=user_id).get_usertype_from_userModel()
         if user_type == "SuperAdmin":
             return True
 
@@ -133,7 +133,7 @@ class IsVerifiedConsumer(BasePermission):
     def has_permission(self, request, view):
         # Expect frontend to send headers:
         # user_id: <user_id>
-        user_id = request.headers.get("user_id")
+        user_id = request.headers.get("user-id")
 
         if not user_id:
             return False
@@ -151,7 +151,7 @@ class IsVerifiedFarmer(BasePermission):
     def has_permission(self, request, view):
         # Expect frontend to send headers:
         # user_id: <user_id>
-        user_id = request.headers.get("user_id")
+        user_id = request.headers.get("user-id")
 
         if not user_id:
             return False

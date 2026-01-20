@@ -196,7 +196,7 @@ This is for the users to send verification request.
 @api_view(['POST'])
 @permission_classes([HasValidTokenForUser])
 def verification_request(request):
-    user_id = request.headers.get('user_id')
+    user_id = request.headers.get('user-id')
     id_front = request.FILES.get('id_front')
     id_back = request.FILES.get('id_back')
     selfie_with_id = request.FILES.get('selfie_with_id')

@@ -132,6 +132,10 @@ class Users(models.Model):
     
     def get_phone_from_userModel(self):
         return self.phone
+    
+    def get_usertype_from_userModel(self):
+        return self.profile_id.user_type
+    
         
 
     def __str__(self):
@@ -484,7 +488,7 @@ class Tokens(models.Model):
     @property
     def is_active(self):
         """Check if the token is still active"""
-        return self.token_status == 'ACTIVE' and not self.is_expired
+        return self.token_status == 'ACTIVE' and not self.is_expired()
 
     def is_expired(self):
         """Check if the token has expired"""
