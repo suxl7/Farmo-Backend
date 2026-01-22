@@ -16,8 +16,9 @@ from rest_framework.permissions import AllowAny
 def check_userid_available(request):
     """Check if userID is available"""
     user_id = request.data.get('user_id')
-
+  
     if not user_id:
+        
         return Response({'status': 1}, status=status.HTTP_200_OK)
     
     """Check existence of user_id in Users model [exists is boolean]"""

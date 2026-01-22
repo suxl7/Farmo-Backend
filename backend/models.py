@@ -145,7 +145,7 @@ class Users(models.Model):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(profile_status__in=['PENDING', 'ACTIVATED', 'SUSPENDED', 'DELETED']),
+                condition=models.Q(profile_status__in=['PENDING', 'ACTIVATED', 'SUSPENDED', 'DEACTIVATE']),
                 name='valid_profile_status'
             )
         ]
@@ -329,7 +329,7 @@ class Verification(models.Model):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(status__in=['PENDING', 'VERIFIED', 'REJECTED']),
+                condition=models.Q(status__in=['PENDING', 'VERIFIED', 'REJECTED', 'UNVERIFIED']),
                 name='valid_status'
             )
         ]
@@ -485,14 +485,19 @@ class Tokens(models.Model):
         """Deactivate all tokens for a user (logout all devices)"""
         cls.objects.filter(user_id=user, token_status='ACTIVE').update(token_status='INACTIVE')
 
-
+    def is_expired(self):
+        """Check if the token has expired"""
+        if timezone.now() > self.expires_at:
+            self.deactivate()
+            return True
+        else:
+            return False
+    
     def is_active(self):
         """Check if the token is still active"""
         return self.token_status == 'ACTIVE' and not self.is_expired()
 
-    def is_expired(self):
-        """Check if the token has expired"""
-        return timezone.now() > self.expires_at
+
 
     def __str__(self):
         return f"Token for {self.user_id}"

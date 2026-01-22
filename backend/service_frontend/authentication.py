@@ -273,7 +273,8 @@ def logout(request):
     try:
         token_obj = Tokens.objects.get(token=token)
         token_obj.deactivate()
-        return Response({'message': 'Logout successful!'}, status=status.HTTP_200_OK)
+        
+        return Response({}, status=status.HTTP_200_OK)
     except Tokens.DoesNotExist:
         return Response({'error': 'Invalid Login token.'}, status=status.HTTP_401_UNAUTHORIZED)
     except Exception as e:

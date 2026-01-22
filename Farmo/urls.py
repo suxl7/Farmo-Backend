@@ -41,8 +41,9 @@ from backend.service_frontend.userProfile import (
     get_payment_method, 
     add_payment_method,
     change_password)
-from backend.service_frontend.servicesProfile import (
-    profile_details as view_profile)
+from backend.service_frontend.servicesForUsers import (
+    other_user_profile,
+    search_user)
 from backend.service_frontend.orders import (
     order_request, 
     get_order_detail, 
@@ -88,6 +89,10 @@ from backend.service_frontend.serviceHome import (
     dashboard_fullfillment_test
 )
 
+from backend.service_frontend.product import (
+    add_products
+)
+
 
 urlpatterns = [
     #path('admin/', admin.site.urls),
@@ -114,6 +119,8 @@ urlpatterns = [
     path('api/consumer/all-orders/', all_consumer_orders, name='all_consumer_orders'),
     path('api/farmer/order-detail/', get_order_detail, name='get_order_detail'),
     # Address and others
+    path('api/user/profile/', other_user_profile, name='view_profile'),
+    path('api/user/search/', search_user, name='search_user'),
     path('api/user/address/', get_address, name='get_address'),
     path('api/user/payment-method/', add_payment_method, name='add_payment_method'),
     path('api/user/get-payment-method/', get_payment_method, name='get_payment_method'),
@@ -146,8 +153,10 @@ urlpatterns = [
     path('api/home/dashboard/', dashboard_fullfillment, name='dashboard_fullfillment'),
     path('api/home/dashboard-test/', dashboard_fullfillment_test, name='dashboard_fullfillment_robin'),
     # Profile
-    path('api/profile/', view_profile, name='view_profile'),
-    path('api/profile/change-password/', change_password, name='change_password'),
+    
+    path('api/profile/change-password/', change_password, name='change_password'), #checked
+    # Product
+    path('api/product/add/', add_products, name='add_products'),
 ]
 
 # Serve media files during development

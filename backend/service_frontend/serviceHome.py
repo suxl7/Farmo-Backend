@@ -10,7 +10,7 @@ from django.utils import timezone
 
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([HasValidTokenForUser])
 def dashboard_fullfillment(request):
     user_id = request.headers.get('user-id')
     # ✅ consistent key

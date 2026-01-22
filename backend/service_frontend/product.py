@@ -7,16 +7,18 @@ from backend.utils.media_handler import FileManager
 from django.db.models import Q  
 from django.utils import timezone
 from django.utils.dateparse import parse_date
+from rest_framework.permissions import AllowAny
 #import mimetypes
 import secrets
 
 
 
 @api_view(['POST'])
-@permission_classes([HasValidTokenForUser, IsFarmer, IsAdmin])
+#@permission_classes([HasValidTokenForUser, IsFarmer, IsAdmin])
+@permission_classes([HasValidTokenForUser])
 def add_products(request):
     """Protected view - requires valid token"""
-    user = request.headers.get('user-id')
+    user = request.data.get('user_id')
     name = request.data.get('name')
     category = request.data.get('category')
     is_organic = request.data.get('is_organic')
@@ -84,3 +86,10 @@ def add_products(request):
         'message': 'Product created successfully',
         'product_id': pid
     }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['post'])
+@permission_classes([AllowAny])
+def add_product_FromAdmin(request):
+    user = request.data.get('user_id')
+    
