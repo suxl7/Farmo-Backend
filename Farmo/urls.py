@@ -43,7 +43,8 @@ from backend.service_frontend.userProfile import (
     change_password)
 from backend.service_frontend.servicesForUsers import (
     other_user_profile,
-    search_user)
+    search_user,
+    user_farmer_page)
 from backend.service_frontend.orders import (
     order_request, 
     get_order_detail, 
@@ -121,6 +122,7 @@ urlpatterns = [
     # Address and others
     path('api/user/profile/', other_user_profile, name='view_profile'),
     path('api/user/search/', search_user, name='search_user'),
+    path("api/user/farmer/", user_farmer_page, name="user_farmer_page"),
     path('api/user/address/', get_address, name='get_address'),
     path('api/user/payment-method/', add_payment_method, name='add_payment_method'),
     path('api/user/get-payment-method/', get_payment_method, name='get_payment_method'),
