@@ -418,31 +418,6 @@ def forget_password_change_password(request):
 #                            forget Password
 ##########################################################################################
     
-##########################################################################################
-#                            Change Password
-##########################################################################################
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def change_password(request):
-    userid = request.headers.get('user-id')
-    old_password = request.data.get('old_password')
-    new_password = request.data.get('new_password')
-
-    user = Users.objects.get(user_id=user, profile_status ='ACTIVATED')
-    if not user.check_password(old_password):
-        return Response({'error': 'Incorrect old password!'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    user.update_password(new_password)
-    user.save()
-    UserActivity.create_activity(user, activity="CHANGE_PASSWORD", discription="")
-    
-    return Response({'message': 'Password changed successfully!'}, status=status.HTTP_200_OK)
-    
-##########################################################################################
-#                            Change Password End
-##########################################################################################
- 
 
     
     

@@ -28,7 +28,7 @@ from backend.service_frontend.authentication import (
     forgot_password,
     forget_password_change_password,
     forget_password_verify_email,
-    forget_password_verify_otp
+    forget_password_verify_otp,
     )
 from backend.service_frontend.servicesActivity import (
     get_online_status, 
@@ -39,7 +39,8 @@ from backend.service_frontend.userProfile import (
     verification_request, 
     update_profile_picture, 
     get_payment_method, 
-    add_payment_method)
+    add_payment_method,
+    change_password)
 from backend.service_frontend.servicesProfile import (
     profile_details as view_profile)
 from backend.service_frontend.orders import (
@@ -102,6 +103,7 @@ urlpatterns = [
     path('api/auth/forgot-password-verify-email/', forget_password_verify_email, name='forget_password_verify_email'), # checked
     path('api/auth/forgot-password-verify-otp/', forget_password_verify_otp, name='forget_password_verify_otp'), # checked
     path('api/auth/forgot-password-change-password/', forget_password_change_password, name='forget_password_change_password'), # checked
+
     # User
     path('api/user/update-profile-picture/', update_profile_picture, name='update_profile_picture'),
     path('api/user/verification-request/', verification_request, name='verification_request'),
@@ -145,6 +147,7 @@ urlpatterns = [
     path('api/home/dashboard-test/', dashboard_fullfillment_test, name='dashboard_fullfillment_robin'),
     # Profile
     path('api/profile/', view_profile, name='view_profile'),
+    path('api/profile/change-password/', change_password, name='change_password'),
 ]
 
 # Serve media files during development
