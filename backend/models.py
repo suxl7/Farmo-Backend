@@ -485,7 +485,7 @@ class Tokens(models.Model):
         """Deactivate all tokens for a user (logout all devices)"""
         cls.objects.filter(user_id=user, token_status='ACTIVE').update(token_status='INACTIVE')
 
-    @property
+
     def is_active(self):
         """Check if the token is still active"""
         return self.token_status == 'ACTIVE' and not self.is_expired()

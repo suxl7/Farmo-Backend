@@ -184,7 +184,7 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     'content-type',
     'token',
-    'userid',
+    'user-id',
     'ngrok-skip-browser-warning',
 ]
 

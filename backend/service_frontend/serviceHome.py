@@ -10,10 +10,9 @@ from django.utils import timezone
 
 
 @api_view(['POST'])
-@permission_classes([HasValidTokenForUser])
+@permission_classes([AllowAny])
 def dashboard_fullfillment(request):
     user_id = request.headers.get('user-id')
-    
     # ✅ consistent key
     try:
         user = Users.objects.get(user_id=user_id)
@@ -30,10 +29,11 @@ def dashboard_fullfillment(request):
 
     elif user.profile_id.user_type in ['Farmer', 'VerifiedFarmer']:
         return Response({
+            'username': user.get_full_name_from_userModel(),
             'connections': get_user_total_connections(user_id),
             'wallet_balance': get_wallet_balance(user_id),
-            'todays_income': get_todays_income(user_id),
-            'total_orders': get_farmer_orderRequests(user_id)
+            #'todays_income': get_todays_income(user_id),
+            #'total_orders': get_farmer_orderRequests(user_id)
         }, status=status.HTTP_200_OK)
 
     elif user.profile_id.user_type in ['Consumer', 'VerifiedConsumer']:
@@ -44,6 +44,43 @@ def dashboard_fullfillment(request):
 
     return Response({'detail': 'Unauthorized user type'}, status=status.HTTP_403_FORBIDDEN)
 
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def dashboard_fullfillment_test(request):
+    user_id = request.headers.get('user-id')
+    
+    # ✅ consistent key
+    try:
+        user = Users.objects.get(user_id=user_id)
+    except Users.DoesNotExist:
+        return Response({'detail': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if user.is_admin:
+        return Response({
+            'username': user.get_full_name_from_userModel(),
+            'total_farmers': get_total_farmers(),
+            'active_products': get_active_products(),
+            'total_consumers': get_total_consumers(),
+            'verification_requests': get_verification_requests()
+        }, status=status.HTTP_200_OK)
+
+    elif user.profile_id.user_type in ['Farmer', 'VerifiedFarmer']:
+        return Response({
+            'username': user.get_full_name_from_userModel(),
+            'connections': get_user_total_connections(user_id),
+            'wallet_balance': get_wallet_balance(user_id),
+            #'todays_income': get_todays_income(user_id),
+            #'total_orders': get_farmer_orderRequests(user_id)
+        }, status=status.HTTP_200_OK)
+
+    elif user.profile_id.user_type in ['Consumer', 'VerifiedConsumer']:
+        return Response({
+            'connections': get_user_total_connections(user_id),
+            'order_requests': get_orderRequested_by_consumer(user_id)
+        }, status=status.HTTP_200_OK)
+
+    return Response({'detail': 'Unauthorized user type'}, status=status.HTTP_403_FORBIDDEN)
 
 
 # def get_total_farmers():

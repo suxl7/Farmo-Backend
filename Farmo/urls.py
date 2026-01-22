@@ -82,7 +82,10 @@ from backend.service_frontend.servicesRating import (
     # Top rated user
     top_rated_farmers
 )
-from backend.service_frontend.serviceHome import *
+from backend.service_frontend.serviceHome import (
+    dashboard_fullfillment,
+    dashboard_fullfillment_test
+)
 
 
 urlpatterns = [
@@ -139,6 +142,7 @@ urlpatterns = [
     path('api/rating/top-rated-farmers/', top_rated_farmers, name='top_rated_farmers'),
     # Home
     path('api/home/dashboard/', dashboard_fullfillment, name='dashboard_fullfillment'),
+    path('api/home/dashboard-test/', dashboard_fullfillment_test, name='dashboard_fullfillment_robin'),
     # Profile
     path('api/profile/', view_profile, name='view_profile'),
 ]

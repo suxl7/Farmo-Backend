@@ -283,7 +283,7 @@ def verification_response(request):
 @api_view(['PUT'])
 @permission_classes([HasValidTokenForUser])
 def update_profile_picture(request):
-    user_id = request.headers.get('user_id')
+    user_id = request.headers.get('user-id')
     #user_id = requestuser_id
     new_picture = request.FILES.get('profile_picture')
     

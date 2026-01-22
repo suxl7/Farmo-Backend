@@ -49,7 +49,7 @@ class HasValidTokenForUser(BasePermission):
             return False
 
         # Check token status and expiry
-        if token_obj.is_active:
+        if token_obj.is_active():
             return False
   
         return True
