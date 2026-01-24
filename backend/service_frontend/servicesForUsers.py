@@ -50,8 +50,8 @@ def other_user_profile(request):
 #                            Search User Start 
 ##########################################################################################
 @api_view(['POST'])
-#@permission_classes([HasValidTokenForUser, IsAdmin])
-@permission_classes([AllowAny])
+@permission_classes([HasValidTokenForUser, IsAdmin])
+#@permission_classes([AllowAny])
 def search_user(request):
     """Protected view - requires valid token"""
     try:
@@ -61,13 +61,19 @@ def search_user(request):
         user_type = request.data.get('user_type')
         district = request.data.get('district')
         page = request.data.get('page', 1)
-
+        #print(f"Search Term:{search_term}--")
+    
 
         query = Q()
 
     # Apply filters conditionally
-        if search_term:
-            query &= Q(user_id__icontains=search_term)
+        if search_term != '' or search_term != None:
+            query &= (
+                Q(user_id__icontains=search_term) | 
+                Q(profile_id__f_name__icontains=search_term) |
+                Q(profile_id__m_name__icontains=search_term) |
+                Q(profile_id__l_name__icontains=search_term))
+
 
         if profile_status.upper() != 'ALL STATUS':
             query &= Q(profile_status__iexact=profile_status)
@@ -76,8 +82,16 @@ def search_user(request):
             # Assuming you have a verification field in Users or UsersProfile
             query &= Q(profile_id__verification__iexact=verification)
 
-        if user_type:
-            query &= Q(profile_id__user_type__iexact=user_type)
+        if user_type.lower() in ['farmer', 'verifiedfarmer']:
+            query &= (
+                Q(profile_id__user_type__iexact='Farmer') |
+                Q(profile_id__user_type__iexact='VerifiedFarmer')
+            )
+        elif user_type.lower() in ['consumer', 'verifiedconsumer']:
+            query &= (
+                Q(profile_id__user_type__iexact='Consumer') |
+                Q(profile_id__user_type__iexact='VerifiedConsumer')
+            )
 
         if district.upper() != 'ANY DISTRICT':
             # Example: search across multiple address fields
@@ -100,6 +114,7 @@ def search_user(request):
                 'contact': user.phone,
                 'location': f"{user.profile_id.municipal}, {user.profile_id.district}",
                 'rating': Rating.objects.filter(rated_to=user.user_id).aggregate(Avg('score'))['score__avg'] if Rating.objects.filter(rated_to=user.user_id).exists() else 0.0,
+                'status': user.profile_status,          
             })
         return Response({'users': user_list}, status=status.HTTP_200_OK)
     except Exception as e:
@@ -112,7 +127,7 @@ def search_user(request):
 #                            User Farmer Page
 ##########################################################################################
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([HasValidTokenForUser, IsAdmin])
 def user_farmer_page(request):
     try:
         farmers = Users.objects.filter(Q(profile_id__user_type='Farmer') | Q(profile_id__user_type='VerifiedFarmer'))
@@ -139,4 +154,37 @@ def user_farmer_page(request):
  
 ##########################################################################################
 #                            User Farmer Page End
+##########################################################################################
+
+##########################################################################################
+#                            User Consumer Page
+##########################################################################################
+@api_view(['POST'])
+@permission_classes([HasValidTokenForUser, IsAdmin])
+def user_consumer_page(request):
+    try:
+        consumers = Users.objects.filter(Q(profile_id__user_type='Consumer') | Q(profile_id__user_type='VerifiedConsumer'))
+    except Users.DoesNotExist:
+        return Response({'error': 'Consumer not found'}, status=status.HTTP_404_NOT_FOUND)
+    total_consumer = consumers.count()
+    
+    activated_consumer = consumers.filter(profile_status='ACTIVATED').count()
+    
+    verified_consumer = consumers.filter(profile_id__user_type='VerifiedFarmer').count()
+
+    verification_pending_consumer = Verification.objects.filter(
+        user_id__in=consumers, status='PENDING'
+    ).count()
+
+
+    return Response({
+        'total_consumer': total_consumer,
+        'activated_consumer': activated_consumer,
+        'verified_consumer': verified_consumer,
+        'verification_pending_consumer': verification_pending_consumer,
+        }, status=status.HTTP_200_OK)
+
+ 
+##########################################################################################
+#                            User Consumer Page End
 ##########################################################################################

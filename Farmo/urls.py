@@ -18,6 +18,8 @@ Including another URLconf
 from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
+
+
 from backend.service_frontend.authentication import (
     login, 
     verify_wallet_pin, 
@@ -30,10 +32,12 @@ from backend.service_frontend.authentication import (
     forget_password_verify_email,
     forget_password_verify_otp,
     )
+
 from backend.service_frontend.servicesActivity import (
     get_online_status, 
     check_userid_available, 
     get_address)
+
 from backend.service_frontend.userProfile import (
     register, 
     verification_request, 
@@ -41,15 +45,19 @@ from backend.service_frontend.userProfile import (
     get_payment_method, 
     add_payment_method,
     change_password)
+
 from backend.service_frontend.servicesForUsers import (
     other_user_profile,
     search_user,
-    user_farmer_page)
+    user_farmer_page,
+    user_consumer_page)
+
 from backend.service_frontend.orders import (
     order_request, 
     get_order_detail, 
     all_incomming_orders_for_farmer, 
     all_consumer_orders)
+
 from backend.service_frontend.servicesRating import (
     # Farmer Rating Views (Consumer rates Farmer)
     RateFarmer,
@@ -123,6 +131,7 @@ urlpatterns = [
     path('api/user/profile/', other_user_profile, name='view_profile'),
     path('api/user/search/', search_user, name='search_user'),
     path("api/user/farmer/", user_farmer_page, name="user_farmer_page"),
+    path('api/user/consumer/', user_consumer_page, name='user_consumer_page'),
     path('api/user/address/', get_address, name='get_address'),
     path('api/user/payment-method/', add_payment_method, name='add_payment_method'),
     path('api/user/get-payment-method/', get_payment_method, name='get_payment_method'),
