@@ -326,7 +326,7 @@ def update_profile_picture(request):
 @permission_classes([HasValidTokenForUser])
 def add_payment_method(request):
     # safer way: request.headers not request.header
-    user_id = request.headers.get('user_id')
+    user_id = request.headers.get('user-id')
     payment_method = request.data.get('payment_method')
 
     if not user_id or not payment_method:

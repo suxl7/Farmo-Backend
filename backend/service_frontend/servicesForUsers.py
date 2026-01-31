@@ -12,14 +12,15 @@ from django.db.models import *
 ##########################################################################################
 
 @api_view(['POST'])
-@permission_classes([HasValidTokenForUser, IsAdmin])
-#@permission_classes([AllowAny])
+#@permission_classes([HasValidTokenForUser, IsAdmin])
+@permission_classes([AllowAny])
 def other_user_profile(request):
     """Protected view - requires valid token"""
     userid = request.data.get('user_id')
 
-    user = Users.objects.get(user_id=userid)
+    
     try:
+        user = Users.objects.get(user_id=userid)
         #profile = UsersProfile.objects.get(profile_id=user.profile_id)
         wallet = Wallet.objects.get(user_id=user)
         return Response({
@@ -40,7 +41,7 @@ def other_user_profile(request):
             'whatsapp': user.profile_id.whatsapp,
             'join_date': user.profile_id.join_date,
         }, status=status.HTTP_200_OK)
-    except UsersProfile.DoesNotExist:
+    except Users.DoesNotExist:
         return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
 
 ##########################################################################################
@@ -187,4 +188,26 @@ def user_consumer_page(request):
  
 ##########################################################################################
 #                            User Consumer Page End
+##########################################################################################
+##########################################################################################
+#                            Wallet History Start
+##########################################################################################
+def transcation_history(user_id, to_date, from_date, page):
+    try:
+        # w
+        
+        return ""
+    except Wallet.DoesNotExist:
+        return None
+    
+@api_view(['POST'])
+@permission_classes([HasValidTokenForUser, IsAdmin])
+def get_wallet_history(request):
+    user_id = request.data.get('user_id')
+    page = request.data.get('page', 1)
+
+    wallet_history = wallet_history(user_id)
+
+##########################################################################################
+#                            Wallet History End
 ##########################################################################################

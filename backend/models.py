@@ -410,7 +410,6 @@ class Transaction(models.Model):
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     currency = models.CharField(max_length=10, default='NRP')
     status = models.CharField(max_length=20, default='PENDING')
-    failure_reason = models.TextField(blank=True, null=True)
     status_history = models.JSONField(blank=True, null=True)
     transaction_date = models.DateTimeField(default=timezone.now, db_index=True)
     created_at = models.DateTimeField(default=timezone.now)
