@@ -2,7 +2,7 @@ from rest_framework.decorators import api_view, permission_classes
 from backend.permissions import HasValidTokenForUser, IsAdmin
 from rest_framework.response import Response
 from rest_framework import status
-from backend.models import  UsersProfile, Users, Rating, Wallet, Verification
+from backend.models import  UsersProfile, Users, Rating, Wallet, Verification, Transaction
 from rest_framework.permissions import  AllowAny
 from django.db.models import *
 
@@ -192,21 +192,57 @@ def user_consumer_page(request):
 ##########################################################################################
 #                            Wallet History Start
 ##########################################################################################
-def transcation_history(user_id, to_date, from_date, page):
+def transcation_history_fun(user_id, to_date = None, from_date = None, page = 1):
     try:
-        # w
+        # page size = until not ended & rows = 15 per page
+        user = Users.objects.get(user_id = user_id)
+        query = Q()
+        if user_id != None:
+            query &= (Q(initiated_by =user) | Q(transaction_to = user) )
+        if to_date != None and from_date != None:
+            query &= Q(transaction_date__range=[from_date, to_date])
         
+        transactions = Transaction.objects.filter(query).order_by('-transaction_date')
+        
+        from django.core.paginator import Paginator
+        paginator = Paginator(transactions, 15)
+        page_obj = paginator.get_page(page)
+
+        return {
+            "page": page,
+            "total_pages": paginator.num_pages,
+            "results": list(page_obj.object_list.values())
+        }
+
         return ""
-    except Wallet.DoesNotExist:
+    except Transaction.DoesNotExist:
         return None
     
 @api_view(['POST'])
 @permission_classes([HasValidTokenForUser, IsAdmin])
-def get_wallet_history(request):
+def get_transaction_history_admin(request):
     user_id = request.data.get('user_id')
+    to_date = request.data.get('to_date', None)
+    from_date = request.data.get('from_date', None)
     page = request.data.get('page', 1)
+    transcation_history = transcation_history_fun(user_id, to_date, from_date, page)
 
-    wallet_history = wallet_history(user_id)
+    if transcation_history is None:
+        return Response({'error': 'Transaction not found'}, status=status.HTTP_404_NOT_FOUND)
+    return Response(transcation_history, status=status.HTTP_200_OK)
+
+@api_view(['POST'])
+@permission_classes([HasValidTokenForUser])
+def get_transaction_history_user(request):
+    user_id = request.headers.get('user_id')
+    to_date = request.data.get('to_date', None)
+    from_date = request.data.get('from_date', None)
+    page = request.data.get('page', 1)
+    transcation_history = transcation_history_fun(user_id, to_date, from_date, page)
+    
+    if transcation_history is None:
+        return Response({'error': 'Transaction not found'}, status=status.HTTP_404_NOT_FOUND)
+    return Response(transcation_history, status=status.HTTP_200_OK)
 
 ##########################################################################################
 #                            Wallet History End

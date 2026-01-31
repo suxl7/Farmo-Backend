@@ -3,7 +3,7 @@ from rest_framework.permissions import AllowAny
 from backend.permissions import HasValidTokenForUser, IsAdmin
 from rest_framework.response import Response
 from rest_framework import status
-from backend.models import Users, UsersProfile, UserActivity, PaymentMethodAccepts, Verification as Ver
+from backend.models import Users, UsersProfile, UserActivity, Verification as Ver
 from backend.serializers import VerificationSerializer as VS
 import secrets
 from django.utils import timezone
@@ -324,38 +324,43 @@ def update_profile_picture(request):
 
 @api_view(['PUT'])
 @permission_classes([HasValidTokenForUser])
-def add_payment_method(request):
-    # safer way: request.headers not request.header
+def update_payment_method(request):
     user_id = request.headers.get('user-id')
-    payment_method = request.data.get('payment_method')
+    payment_methods = request.data.get('payment_methods')  # expects a list
 
-    if not user_id or not payment_method:
+    if not user_id or not payment_methods:
         return Response({
-            'error': 'user_id and payment_method are required'
+            'error': 'user_id and payment_methods are required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    if not isinstance(payment_methods, list):
+        return Response({
+            'error': 'payment_methods must be a list'
         }, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        # create or update payment method record
-        pm_obj, created = PaymentMethodAccepts.objects.update_or_create(
-            pm_id=f"{user_id}-payment-method",
-            defaults={
-                "user_id": user_id,
-                "payment_method": payment_method
-            }
-        )
+        profile = UsersProfile.objects.get(profile_id=user_id)
+        # overwrite with the new list
+        profile.payment_method = payment_methods
+        profile.save(update_fields=['payment_method'])
 
         return Response({
-            'message': 'Payment method saved successfully',
+            'message': 'Payment methods saved successfully',
             'data': {
-                'pm_id': pm_obj.pm_id,
-                'created': created
+                'profile_id': profile.profile_id,
+                'payment_methods': profile.payment_method
             }
         }, status=status.HTTP_200_OK)
 
+    except UsersProfile.DoesNotExist:
+        return Response({
+            'error': 'User profile not found'
+        }, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({
             'error': str(e)
         }, status=status.HTTP_400_BAD_REQUEST)
+
     
 '''
 This methods is for get all available payment methods of farmer.
@@ -364,24 +369,29 @@ Like: Cash on Delivery, System Wallet, External Wallet like khalti, esewa, etc.
 @api_view(['POST'])
 @permission_classes([HasValidTokenForUser])
 def get_payment_method(request):
-    user_id = request.headers.get('user_id')
+    user_id = request.headers.get('user-id')  # safer: headers not header
     if not user_id:
         return Response({
-            'error': 'user_id is required'
+            'error': 'user_id is required in headers'
         }, status=status.HTTP_400_BAD_REQUEST)
-    
+
     try:
-        pm_obj = PaymentMethodAccepts.objects.get(user_id=user_id)
-        pm_obj.get_payment_methods()
+        payment_method = Users.objects.get(user_id=user_id).profile_id.payment_method
+       
         return Response({
-            'pm_id': pm_obj.pm_id,
-            'payment_method': pm_obj.get_payment_methods()  
+            'message': 'Payment methods retrieved successfully',
+            'data': payment_method  # this will be a list like ["Wallet", "QR", "CashOnDelivery"]
         }, status=status.HTTP_200_OK)
-    
-    except PaymentMethodAccepts.DoesNotExist:
+
+    except UsersProfile.DoesNotExist:
         return Response({
-            'error': 'Payment method not found'
+            'error': 'User profile not found'
         }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'error': str(e)
+        }, status=status.HTTP_400_BAD_REQUEST)
+
 
 ##########################################################################################
 #                            Payment Methods End

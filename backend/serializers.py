@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from .models import (
     Users, UsersProfile, Wallet, Transaction, Product, ProductMedia,
-    ProductRating, Rating, Verification, OrderRequest, OrdProdLink, Tokens, UserActivity, Connections, PaymentMethodAccepts, OTP)
+    ProductRating, Rating, Verification, OrderRequest, OrdProdLink, Tokens, UserActivity, Connections,  OTP)
 
 
 class UsersSerializer(serializers.ModelSerializer):
@@ -29,6 +29,12 @@ class UsersProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UsersProfile
         fields = '__all__'
+
+    def validate_payment_method(self, value):
+        allowed = ["Wallet", "QR", "CashOnDelivery"]
+        if not all(method in allowed for method in value):
+            raise serializers.ValidationError("Invalid payment method")
+        return value
 
 
 
@@ -131,11 +137,6 @@ class ConnectionSerializer(serializers.ModelSerializer):
         model = Connections
         fields = '__all__'
 
-class PaymentMethodAcceptsSerializer(serializers.ModelSerializer):
-    """Serializer for PaymentMethodAccepted model"""
-    class Meta:
-        model = PaymentMethodAccepts
-        fields = '__all__'
 
 class OTPSerializer(serializers.ModelSerializer):
     """Serializer for OTP model"""

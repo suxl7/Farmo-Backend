@@ -30,6 +30,7 @@ class UsersProfile(models.Model):
     whatsapp = models.CharField(max_length=15, blank=True, null=True)
     join_date = models.DateTimeField(default=timezone.now)
     about = models.CharField(max_length=50, blank=True, null=True)
+    payment_method = models.JSONField(max_length=50, default=list, blank=True)
 
     @property
     def get_Address(self):
@@ -405,7 +406,7 @@ class OrdProdLink(models.Model):
 class Transaction(models.Model):
     transaction_id = models.CharField(primary_key=True, editable=False)
     order = models.ForeignKey(OrderRequest, on_delete=models.PROTECT, db_index=True)
-    transaction_to = models.ForeignKey(Wallet, on_delete=models.PROTECT, db_index=True, default=None)
+    transaction_to = models.ForeignKey(Users, on_delete=models.PROTECT, related_name="transaction_to")
     payment_method = models.CharField(max_length=50)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     currency = models.CharField(max_length=10, default='NRP')
@@ -414,7 +415,7 @@ class Transaction(models.Model):
     transaction_date = models.DateTimeField(default=timezone.now, db_index=True)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(null=True, blank=True)
-    initiated_by = models.ForeignKey(Users, on_delete=models.PROTECT)
+    initiated_by = models.ForeignKey(Users, on_delete=models.PROTECT, related_name="initiator")
 
     def __str__(self):
         return f'Transaction {self.transaction_id}: {self.status}'
@@ -426,14 +427,13 @@ class Transaction(models.Model):
                 name='valid_status_transaction'
             ),
             models.CheckConstraint(
-                condition=models.Q(payment_method__in=['WALLET', 'COD', 'KHALTI', 'ESewa']),
+                condition=models.Q(payment_method__in=['WALLET', 'QR']),
                 name='valid_payment_method'
             ),
             models.CheckConstraint(
                 condition=models.Q(initiated_by__in=['CUSTOMER', 'ADMIN']),
                 name='valid_initiated_by'
             )
-
         ]
 
 
@@ -556,21 +556,6 @@ class Connections(models.Model):
                 name='unique_user_connection'
             )
         ]
-
-
-class PaymentMethodAccepts(models.Model):
-    """Track accepted payment methods for each user"""
-    pm_id = models.AutoField(primary_key=True)
-    user_id = models.ForeignKey(Users, on_delete=models.CASCADE)
-    payment_method = models.JSONField(max_length=50, default=list, blank=True) # e.g. WALLET, COD, KHALTI
-
-    @property
-    def get_payment_methods(self):
-        """Get the list of accepted payment methods for this user"""
-        return self.payment_method
-    
-    def __str__(self):
-        return f"{self.user_id} - {self.payment_method}"
     
 
 

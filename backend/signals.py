@@ -1,7 +1,7 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
-from backend.models import Wallet, Transaction, PaymentMethodAccepts
+from backend.models import Wallet, Transaction, UsersProfile
 
 
 @receiver(post_save, sender='backend.Users')
@@ -22,7 +22,7 @@ def transaction_created_for_order(sender, instance, created, **kwargs):
 	'''Automatically create a transaction when a new order is created'''
 	userid = instance.get_pid_from_orderid[0].user_id
 	farmer_wallet = Wallet.objects.get(user_id=userid)
-	payment_method_accepted = PaymentMethodAccepts.objects.get(user_id=userid).payment_method
+	payment_method_accepted = UsersProfile.objects.get(user_id=userid).payment_method
 
 	if instance.order_status == 'ACCEPTED':
 		Transaction.objects.create(
