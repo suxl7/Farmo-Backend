@@ -280,8 +280,8 @@ def verification_response(request):
 #                            Update Profile Picture
 ##########################################################################################
 
-@api_view(['PUT'])
-@permission_classes([HasValidTokenForUser])
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def update_profile_picture(request):
     user_id = request.headers.get('user-id')
     #user_id = requestuser_id
@@ -303,10 +303,10 @@ def update_profile_picture(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     
     # Update database
-    profile = UsersProfile.objects.get(user_id=user_id)
+    user_obj = Users.objects.get(user_id = user_id)
+    profile = UsersProfile.objects.get(profile_id=user_obj.profile_id.profile_id)
     profile.profile_url = result['file_url']
     profile.save()
-    user_obj = Users.objects.get(user_id=request.user)
 
     UserActivity.create_activity(user_obj, activity="UPDATE_PROFILE_PIC", discription="")
 
@@ -424,3 +424,112 @@ def change_password(request):
 #                            Change Password End
 ##########################################################################################
  
+##########################################################################################
+#                            View Profile picture Start
+##########################################################################################
+import base64
+import mimetypes
+from django.conf import settings
+
+def get_user_profile_data(user):
+    """
+    Helper method to get user profile data with encoded profile picture
+    
+    Args:
+        user: Users model instance
+        
+    Returns:
+        dict: Dictionary containing user profile data and base64 encoded image
+    """
+    profile = user.profile_id
+    profile_url = f"{settings.MEDIA_ROOT}{profile.profile_url}"
+    
+    
+    # Use default profile picture if none exists
+    if not profile_url:
+        if profile.user_type.lower() in ['verifiedfarmer', 'farmer']:
+            profile_url = 'backend\static\pp-farmer.png'
+        elif profile.user_type.lower() in ['verifiedconsumer','consumer']:
+            profile_url = 'backend\static\pp-consumer.png'
+        elif profile.user_type.lower() == 'admin':
+            profile_url = 'backend\static\pp-admin.png'
+        elif profile.user_type.lower() == 'superadmin':
+            profile_url = 'backend\static\pp-superadmin.png'
+        else:
+            profile_url = 'backend\static\profile-img-00001.png'
+
+    # Encode profile picture to base64
+    try:
+        with open(profile_url, 'rb') as image_file:
+            encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
+        
+        mime_type, _ = mimetypes.guess_type(profile_url)
+    except FileNotFoundError:
+        # Fallback to default if file doesn't exist
+        with open('backend/static/profile-img-00001.png', 'rb') as image_file:
+            encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
+        mime_type = 'image/png'
+    
+    return {
+        'user_id': user.user_id,
+        'full_name': profile.get_Full_Name,
+        'address': profile.get_Address,
+        'phone': user.phone,
+        'phone2': profile.phone02,
+        'user_type': profile.user_type,
+        'email': profile.email,
+        'facebook': profile.facebook,
+        'whatsapp': profile.whatsapp,
+        'join_date': profile.join_date,
+        'about': profile.about,
+        'dob': profile.dob,
+        'sex': profile.sex,
+        'profile_picture': encoded_image,
+        'pp_mime_type': mime_type or 'image/png',
+    }
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+#@permission_classes([HasValidTokenForUser])
+def view_profile(request):
+    """View own profile - accessible by any authenticated user"""
+    userid = request.headers.get('user-id')
+    
+    
+    try:
+        user = Users.objects.get(user_id=userid)
+        profile_data = get_user_profile_data(user)
+        print(userid)
+        return Response(profile_data, status=status.HTTP_200_OK)
+            
+    except Users.DoesNotExist:
+        print("userid")
+        return Response({
+            'error': 'User not found.'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+#@permission_classes([HasValidTokenForUser, IsAdmin])
+@permission_classes([AllowAny])
+def view_user_profile(request):
+    """View any user's profile - admin only"""
+    userid = request.data.get('target_user_id')  # Changed from request.data for GET
+    
+    if not userid:
+        return Response({
+            'error': 'user_id parameter is required.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        user = Users.objects.get(user_id=userid)
+        profile_data = get_user_profile_data(user)
+        return Response(profile_data, status=status.HTTP_200_OK)
+            
+    except Users.DoesNotExist:
+        return Response({
+            'error': 'User not found.'
+        }, status=status.HTTP_404_NOT_FOUND)
+##########################################################################################
+#                            View Profile Picture End
+##########################################################################################

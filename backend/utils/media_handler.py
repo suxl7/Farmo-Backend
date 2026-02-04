@@ -1,6 +1,7 @@
 import os
 import tempfile
 import cv2
+from datetime import datetime
 from django.conf import settings
 from django.core.exceptions import ValidationError
 
@@ -16,7 +17,7 @@ class FileManager:
             user_id: User ID for file organization
         """
         self.user_id = user_id
-        self.base_path = os.path.join(settings.MEDIA_ROOT, 'Uploaded_Files', user_id)
+        self.base_path = os.path.join(settings.MEDIA_ROOT, 'Uploaded_Files', str(user_id))
         self.base_url = f"{settings.MEDIA_URL}Uploaded_Files/{user_id}"
     
     
@@ -125,17 +126,60 @@ class FileManager:
         
         file_ext = os.path.splitext(file.name)[1].lower()
         
-        # Create directory
+        # Create directory structure with proper error handling
         category_dir = os.path.join(self.base_path, category)
-        os.makedirs(category_dir, exist_ok=True)
         
+        try:
+            # Create the directory with exist_ok=True
+            os.makedirs(category_dir, exist_ok=True)
+            
+            # Verify directory was created successfully
+            if not os.path.exists(category_dir):
+                return {
+                    'success': False,
+                    'error': f'Failed to create directory: {category_dir}'
+                }
+            
+            # Check if directory is writable
+            if not os.access(category_dir, os.W_OK):
+                return {
+                    'success': False,
+                    'error': f'Directory not writable: {category_dir}'
+                }
+                
+        except PermissionError as e:
+            return {
+                'success': False,
+                'error': f'Permission denied creating directory: {str(e)}'
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Directory creation failed: {str(e)}'
+            }
+        
+        timestamp = datetime.now().strftime('%m%d%Y-%H%M%S')
         # Generate filename
         if category == 'profile':
-            file_name = f"{file_purpose}{file_ext}"
+            # Generate date string: MMDDYYYY (e.g., 02042026)
+            # Format: MMDDYYYY_HHMMSS (e.g., 02042026_143005)
+            
+            
+            # Construct filename: profile-pic_02042026.png
+            file_name = f"{file_purpose}-{timestamp}{file_ext}"
+            
+            # Optional: Handle the rare case where two uploads happen on the same day
+            # and you don't want to overwrite.
+            counter = 1
+            temp_name = file_name
+            while os.path.exists(os.path.join(category_dir, temp_name)):
+                temp_name = f"{file_purpose}-{timestamp}-{counter}{file_ext}"
+                counter += 1
+            file_name = temp_name
         else:  # product
             if sequence is None:
                 sequence = self._get_next_sequence(category_dir, product_id, file_purpose)
-            file_name = f"{product_id}-{file_purpose}-{sequence:03d}{file_ext}"
+            file_name = f"{product_id}-{file_purpose}-{timestamp}-{sequence:03d}{file_ext}"
         
         # Full file path
         file_path = os.path.join(category_dir, file_name)
@@ -152,6 +196,13 @@ class FileManager:
         if not save_result['success']:
             return save_result
         
+        # Verify file was actually written
+        if not os.path.exists(file_path):
+            return {
+                'success': False,
+                'error': 'File was not saved successfully'
+            }
+        
         # Generate URL
         file_url = f"{self.base_url}/{category}/{file_name}"
         
@@ -167,6 +218,13 @@ class FileManager:
     
     def _validate_file(self, file, allowed_extensions, max_size_mb):
         """Validate file extension and size"""
+        
+        # Check if file exists
+        if not file:
+            return {
+                'success': False,
+                'error': 'No file provided'
+            }
         
         # Check extension
         file_ext = os.path.splitext(file.name)[1].lower()
@@ -186,15 +244,18 @@ class FileManager:
         
         return {'success': True}
     
+    
     def _validate_video_duration(self, file, max_duration=30):
         """Validate video duration using OpenCV"""
         tmp_path = None
         try:
+            # Create temporary file
             with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.name)[1]) as tmp:
                 for chunk in file.chunks():
                     tmp.write(chunk)
                 tmp_path = tmp.name
             
+            # Check video duration
             cap = cv2.VideoCapture(tmp_path)
             fps = cap.get(cv2.CAP_PROP_FPS)
             frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
@@ -203,18 +264,31 @@ class FileManager:
             if fps > 0:
                 duration = frame_count / fps
                 if duration > max_duration:
-                    os.unlink(tmp_path)
-                    return {'success': False, 'error': f'Video duration exceeds {max_duration} seconds'}
+                    if os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
+                    return {
+                        'success': False,
+                        'error': f'Video duration exceeds {max_duration} seconds'
+                    }
             
-            os.unlink(tmp_path)
+            # Clean up temp file
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            
+            # Reset file pointer
             file.seek(0)
             return {'success': True}
-        except:
+            
+        except Exception as e:
+            # Clean up on error
             if tmp_path and os.path.exists(tmp_path):
                 os.unlink(tmp_path)
+            
+            # Reset file pointer
             file.seek(0)
+            
+            # Return success since we can't validate (better than blocking uploads)
             return {'success': True}
-    
     
     
     def _get_default_extensions(self, file_purpose):
@@ -234,20 +308,26 @@ class FileManager:
         if not os.path.exists(directory):
             return 1
         
-        existing_files = os.listdir(directory)
-        prefix = f"{product_id}-{file_purpose}-"
-        
-        max_seq = 0
-        for existing_file in existing_files:
-            if existing_file.startswith(prefix):
-                try:
-                    seq_str = existing_file.replace(prefix, '').split('.')[0]
-                    seq_num = int(seq_str)
-                    max_seq = max(max_seq, seq_num)
-                except ValueError:
-                    continue
-        
-        return max_seq + 1
+        try:
+            existing_files = os.listdir(directory)
+            prefix = f"{product_id}-{file_purpose}-"
+            
+            max_seq = 0
+            for existing_file in existing_files:
+                if existing_file.startswith(prefix):
+                    try:
+                        # Extract sequence number from filename
+                        seq_str = existing_file.replace(prefix, '').split('.')[0]
+                        seq_num = int(seq_str)
+                        max_seq = max(max_seq, seq_num)
+                    except ValueError:
+                        continue
+            
+            return max_seq + 1
+            
+        except Exception as e:
+            # If we can't read directory, start from 1
+            return 1
     
     
     def _write_file(self, file, file_path):
@@ -258,6 +338,16 @@ class FileManager:
                 for chunk in file.chunks():
                     destination.write(chunk)
             return {'success': True}
+        except PermissionError as e:
+            return {
+                'success': False,
+                'error': f'Permission denied writing file: {str(e)}'
+            }
+        except IOError as e:
+            return {
+                'success': False,
+                'error': f'IO error writing file: {str(e)}'
+            }
         except Exception as e:
             return {
                 'success': False,
@@ -285,6 +375,8 @@ class FileManager:
                 return {'success': True, 'message': 'File deleted successfully'}
             else:
                 return {'success': False, 'error': 'File not found'}
+        except PermissionError as e:
+            return {'success': False, 'error': f'Permission denied: {str(e)}'}
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
@@ -335,7 +427,6 @@ class FileManager:
             }
     
     
-    
     def get_file_info(self, category, file_name):
         """
         Get information about a specific file
@@ -356,11 +447,131 @@ class FileManager:
                 'error': 'File not found'
             }
         
-        return {
-            'success': True,
-            'file_name': file_name,
-            'file_path': file_path,
-            'file_url': f"{self.base_url}/{category}/{file_name}",
-            'size': os.path.getsize(file_path),
-            'category': category
-        }
+        try:
+            return {
+                'success': True,
+                'file_name': file_name,
+                'file_path': file_path,
+                'file_url': f"{self.base_url}/{category}/{file_name}",
+                'size': os.path.getsize(file_path),
+                'category': category
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Error getting file info: {str(e)}'
+            }
+    
+    
+    def verify_setup(self):
+        """
+        Verify that the base directory structure can be created
+        Useful for debugging directory creation issues
+        
+        Returns:
+            dict: Status of directory setup
+        """
+        try:
+            # Check if base MEDIA_ROOT exists
+            if not os.path.exists(settings.MEDIA_ROOT):
+                return {
+                    'success': False,
+                    'error': f'MEDIA_ROOT does not exist: {settings.MEDIA_ROOT}',
+                    'tip': 'Create MEDIA_ROOT directory or check settings.py'
+                }
+            
+            # Check if MEDIA_ROOT is writable
+            if not os.access(settings.MEDIA_ROOT, os.W_OK):
+                return {
+                    'success': False,
+                    'error': f'MEDIA_ROOT is not writable: {settings.MEDIA_ROOT}',
+                    'tip': 'Check directory permissions'
+                }
+            
+            # Try to create user directory
+            os.makedirs(self.base_path, exist_ok=True)
+            
+            if not os.path.exists(self.base_path):
+                return {
+                    'success': False,
+                    'error': f'Failed to create user directory: {self.base_path}'
+                }
+            
+            # Try to create test subdirectories
+            test_dirs = ['profile', 'product']
+            for test_dir in test_dirs:
+                test_path = os.path.join(self.base_path, test_dir)
+                os.makedirs(test_path, exist_ok=True)
+                if not os.path.exists(test_path):
+                    return {
+                        'success': False,
+                        'error': f'Failed to create {test_dir} directory: {test_path}'
+                    }
+            
+            return {
+                'success': True,
+                'base_path': self.base_path,
+                'writable': os.access(self.base_path, os.W_OK),
+                'media_root': settings.MEDIA_ROOT,
+                'message': 'Directory structure verified successfully'
+            }
+            
+        except PermissionError as e:
+            return {
+                'success': False,
+                'error': f'Permission error: {str(e)}',
+                'tip': 'Check folder permissions on the server'
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Setup verification failed: {str(e)}'
+            }
+    
+    
+    def list_files(self, category=None):
+        """
+        List all files for this user
+        
+        Args:
+            category: Optional - 'profile' or 'product' to filter
+        
+        Returns:
+            dict: List of files with their info
+        """
+        try:
+            files_list = []
+            
+            if category:
+                categories = [category]
+            else:
+                categories = ['profile', 'product']
+            
+            for cat in categories:
+                cat_dir = os.path.join(self.base_path, cat)
+                
+                if not os.path.exists(cat_dir):
+                    continue
+                
+                for file_name in os.listdir(cat_dir):
+                    file_path = os.path.join(cat_dir, file_name)
+                    
+                    if os.path.isfile(file_path):
+                        files_list.append({
+                            'file_name': file_name,
+                            'category': cat,
+                            'file_url': f"{self.base_url}/{cat}/{file_name}",
+                            'size': os.path.getsize(file_path)
+                        })
+            
+            return {
+                'success': True,
+                'files': files_list,
+                'count': len(files_list)
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Error listing files: {str(e)}'
+            }

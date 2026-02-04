@@ -44,7 +44,9 @@ from backend.service_frontend.userProfile import (
     update_profile_picture, 
     get_payment_method, 
     update_payment_method,
-    change_password)
+    change_password,
+    view_profile,
+    view_user_profile)
 
 from backend.service_frontend.servicesForUsers import (
     other_user_profile,
@@ -122,6 +124,7 @@ urlpatterns = [
 
     # User
     path('api/user/update-profile-picture/', update_profile_picture, name='update_profile_picture'),
+    path('api/user/view-profile/', view_profile, name='view_profile'),
     path('api/user/verification-request/', verification_request, name='verification_request'),
     path('api/user/online-status/', get_online_status, name='get_online_status'),
     path('api/user/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin'),
@@ -131,6 +134,7 @@ urlpatterns = [
     path('api/user/farmer/order-detail/', get_order_detail, name='get_order_detail'),
     path('api/user/transaction-history/', get_transaction_history_user, name='get_transaction_history_user'),
     path('api/admin/transaction-history/', get_transaction_history_admin, name='get_transaction_history_admin'),
+    path('api/admin/view-user-profile/', view_user_profile, name='view_user_profile'),
     # Address and others
     path('api/admin/user-profile/', other_user_profile, name='other_user_profile'),
     path('api/admin/search-user/', search_user, name='search_user'),
@@ -171,7 +175,7 @@ urlpatterns = [
     path('api/home/dashboard-test/', dashboard_fullfillment_test, name='dashboard_fullfillment_robin'),
     # Profile
     
-    path('api/profile/change-password/', change_password, name='change_password'), #checked
+    path('api/admin/user-profile/change-password/', change_password, name='change_password'), #checked
     # Product
     path('api/product/add/', add_products, name='add_products'),
 ]

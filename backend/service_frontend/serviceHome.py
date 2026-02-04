@@ -39,7 +39,10 @@ def dashboard_fullfillment(request):
     elif user.profile_id.user_type in ['Consumer', 'VerifiedConsumer']:
         return Response({
             'connections': get_user_total_connections(user_id),
-            'order_requests': get_orderRequested_by_consumer(user_id)
+            'order_requests': get_orderRequested_by_consumer(user_id),
+            'username': user.get_full_name_from_userModel(),
+            'connections': get_user_total_connections(user_id),
+            'wallet_balance': get_wallet_balance(user_id),
         }, status=status.HTTP_200_OK)
 
     return Response({'detail': 'Unauthorized user type'}, status=status.HTTP_403_FORBIDDEN)
