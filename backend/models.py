@@ -633,4 +633,19 @@ class TrackUser(models.Model):
         return f"{self.user_id} - {self.product_catagory}"
 
 
+class FarmProducts(models.Model):
+    primary_name = models.CharField(max_length=255, null=True, blank=True, db_index=True)
+    secondary_name = models.CharField(max_length=255, null=True, blank=True, db_index=True)
+
+
+    def __str__(self):
+        return f"{self.primary_name} - {self.secondary_name}"
     
+    class Meta:
+        indexes = [
+            models.Index(fields=["primary_name"]),
+            models.Index(fields=["secondary_name"]),
+            models.Index(fields=["primary_name", "secondary_name"])
+        ]
+
+        unique_together = ('primary_name', 'secondary_name')
