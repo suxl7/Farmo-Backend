@@ -45,7 +45,7 @@ from backend.service_frontend.userProfile import (
     get_payment_method, 
     update_payment_method,
     change_password,
-    view_profile,
+    view_own_profile,
     view_user_profile)
 
 from backend.service_frontend.servicesForUsers import (
@@ -99,7 +99,8 @@ from backend.service_frontend.servicesRating import (
 )
 from backend.service_frontend.serviceHome import (
     dashboard_fullfillment,
-    dashboard_fullfillment_test
+    dashboard_fullfillment_test,
+    refresh_wallet
 )
 
 from backend.service_frontend.product import (
@@ -123,8 +124,9 @@ urlpatterns = [
     path('api/auth/forgot-password-change-password/', forget_password_change_password, name='forget_password_change_password'), # checked
 
     # User
+    path('api/user/view-user-profile/', view_user_profile, name='view_user_profile'),
     path('api/user/update-profile-picture/', update_profile_picture, name='update_profile_picture'),
-    path('api/user/view-profile/', view_profile, name='view_profile'),
+    path('api/user/view-profile/', view_own_profile, name='view_profile'),
     path('api/user/verification-request/', verification_request, name='verification_request'),
     path('api/user/online-status/', get_online_status, name='get_online_status'),
     path('api/user/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin'),
@@ -134,7 +136,7 @@ urlpatterns = [
     path('api/user/farmer/order-detail/', get_order_detail, name='get_order_detail'),
     path('api/user/transaction-history/', get_transaction_history_user, name='get_transaction_history_user'),
     path('api/admin/transaction-history/', get_transaction_history_admin, name='get_transaction_history_admin'),
-    path('api/admin/view-user-profile/', view_user_profile, name='view_user_profile'),
+   
     # Address and others
     path('api/admin/user-profile/', other_user_profile, name='other_user_profile'),
     path('api/admin/search-user/', search_user, name='search_user'),
@@ -144,6 +146,7 @@ urlpatterns = [
     path('api/user/address/', get_address, name='get_address'),
     path('api/user/payment-method/', update_payment_method, name='add_payment_method'),
     path('api/user/get-payment-method/', get_payment_method, name='get_payment_method'),
+    
     # Rating
     path('api/farmer/rating/create/', RateFarmer.as_view(), name='rate_farmer'),
     path('api/farmer/rating/edit/<int:pk>/', EditFarmerRate.as_view(), name='edit_farmer_rate'),
@@ -173,6 +176,8 @@ urlpatterns = [
     # Home
     path('api/home/dashboard/', dashboard_fullfillment, name='dashboard_fullfillment'),
     path('api/home/dashboard-test/', dashboard_fullfillment_test, name='dashboard_fullfillment_robin'),
+    path('api/home/refresh-wallet/', refresh_wallet, name='refresh_wallet'),
+
     # Profile
     
     path('api/admin/user-profile/change-password/', change_password, name='change_password'), #checked

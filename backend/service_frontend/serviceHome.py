@@ -10,9 +10,10 @@ from django.utils import timezone
 
 
 @api_view(['POST'])
-@permission_classes([HasValidTokenForUser])
+@permission_classes([AllowAny])
 def dashboard_fullfillment(request):
     user_id = request.headers.get('user-id')
+    print(user_id)
     # ✅ consistent key
     try:
         user = Users.objects.get(user_id=user_id)
@@ -148,3 +149,23 @@ def get_todays_income(farmer):
     # 4. Handle cases where there are no sales (returns None), default to 0
     return income_data['total_income'] or 0
 
+
+@api_view(['POST'])
+@permission_classes([HasValidTokenForUser])
+def refresh_wallet(request):
+    """Get all orders for products belonging to the authenticated farmer"""
+    userid = request.headers.get('user-id')
+    
+    if userid is None:
+        return Response({'error': 'Missing user-id header'}, status=status.HTTP_400_BAD_REQUEST)
+    
+
+
+    balance = "2000.00"
+    b = "100.00"
+    return Response(
+        {
+        'balance': balance,
+        'todays_income': b
+        },
+        status=status.HTTP_200_OK)

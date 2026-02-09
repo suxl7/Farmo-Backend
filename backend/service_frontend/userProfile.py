@@ -121,24 +121,14 @@ def register(request):
             'error': 'You have already created an account with this phone number.'}, status=status.HTTP_400_BAD_REQUEST)
     
     
-    file_manager = FileManager(user_id)
-    
-    profile_picture_url = None
-    if profile_picture:
-        result = file_manager.save_profile_file(
-            file=profile_picture,
-            file_purpose='profile-pic',
-            max_size_mb=5
-        )
-        
-        if not result['success']:
-            return Response({
-                'error': 'Profile picture upload failed.'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        profile_picture_url = result['file_url']
-    
-    # print(0)
+    result = save_profile_file(user_id, profile_picture)
+
+    if profile_picture and not result['success']:
+        return Response({'error': result['error']}, status=status.HTTP_400_BAD_REQUEST)
+
+    profile_picture_url = result['file_url'] if profile_picture else None
+
+
     profile = UsersProfile.create_profile(
         profile_url=profile_picture_url or None,
         f_name=f_name,
@@ -274,49 +264,6 @@ def verification_response(request):
 ##########################################################################################
 #                            verification
 ##########################################################################################
-
-
-##########################################################################################
-#                            Update Profile Picture
-##########################################################################################
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def update_profile_picture(request):
-    user_id = request.headers.get('user-id')
-    #user_id = requestuser_id
-    new_picture = request.FILES.get('profile_picture')
-    
-    # Initialize FileManager
-    file_manager = FileManager(user_id)
-    
-    # Save new picture (will replace old one)
-    result = file_manager.save_profile_file(
-        file=new_picture,
-        file_purpose='profile-pic',
-        max_size_mb=5
-    )
-    
-    if not result['success']:
-        return Response({
-            'error': result['error']
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    # Update database
-    user_obj = Users.objects.get(user_id = user_id)
-    profile = UsersProfile.objects.get(profile_id=user_obj.profile_id.profile_id)
-    profile.profile_url = result['file_url']
-    profile.save()
-
-    UserActivity.create_activity(user_obj, activity="UPDATE_PROFILE_PIC", discription="")
-
-    return Response({
-        'message': 'Profile picture updated successfully.'
-    }, status=status.HTTP_200_OK)
-
-##########################################################################################
-#                            Profile Picture Update End
-##########################################################################################
 ##########################################################################################
 #                            Payment Method 
 ##########################################################################################
@@ -423,7 +370,52 @@ def change_password(request):
 ##########################################################################################
 #                            Change Password End
 ##########################################################################################
- 
+
+##########################################################################################
+#                            Update Profile Picture
+##########################################################################################
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def update_profile_picture(request):
+    user_id = request.headers.get('user-id')
+    new_picture = request.FILES.get('profile_picture')
+
+    # Call helper method to save file
+    result = save_profile_file(user_id, new_picture)
+
+    if not result['success']:
+        return Response({'error': result['error']}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Update database here
+    user_obj = Users.objects.get(user_id=user_id)
+    profile = UsersProfile.objects.get(profile_id=user_obj.profile_id.profile_id)
+    profile.profile_url = result['file_url']
+    profile.save()
+
+    # Log activity
+    UserActivity.create_activity(user_obj, activity="UPDATE_PROFILE_PIC", discription="")
+
+    return Response({'message': 'Profile picture updated successfully.'}, status=status.HTTP_200_OK)
+
+
+def save_profile_file(user_id, new_picture):
+    # Initialize FileManager
+    file_manager = FileManager(user_id)
+
+    # Save new picture (will replace old one)
+    result = file_manager.save_profile_file(
+        file=new_picture,
+        file_purpose='profile-pic',
+        max_size_mb=5
+    )
+    return result
+
+
+##########################################################################################
+#                            Profile Picture Update End
+##########################################################################################
+
 ##########################################################################################
 #                            View Profile picture Start
 ##########################################################################################
@@ -446,7 +438,7 @@ def get_user_profile_data(user):
     
     
     # Use default profile picture if none exists
-    if not profile_url:
+    if not profile.profile_url:
         if profile.user_type.lower() in ['verifiedfarmer', 'farmer']:
             profile_url = 'backend\static\pp-farmer.png'
         elif profile.user_type.lower() in ['verifiedconsumer','consumer']:
@@ -492,7 +484,7 @@ def get_user_profile_data(user):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 #@permission_classes([HasValidTokenForUser])
-def view_profile(request):
+def view_own_profile(request):
     """View own profile - accessible by any authenticated user"""
     userid = request.headers.get('user-id')
     
@@ -500,11 +492,11 @@ def view_profile(request):
     try:
         user = Users.objects.get(user_id=userid)
         profile_data = get_user_profile_data(user)
-        print(userid)
+        #print(userid)
         return Response(profile_data, status=status.HTTP_200_OK)
             
     except Users.DoesNotExist:
-        print("userid")
+        #print("userid")
         return Response({
             'error': 'User not found.'
         }, status=status.HTTP_404_NOT_FOUND)
