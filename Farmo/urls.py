@@ -21,8 +21,7 @@ from django.conf.urls.static import static
 
 
 from backend.service_frontend.authentication import (
-    login, 
-    verify_wallet_pin, 
+    login,  
     login_with_token, 
     login_change_password,
     logout, 
@@ -107,6 +106,13 @@ from backend.service_frontend.product import (
     add_products
 )
 
+from backend.service_frontend.serviceWallet import (
+    req_own_wallet,
+    req_wallet_by_admin,
+    change_wallet_pin,
+    verify_wallet_pin
+)
+
 
 urlpatterns = [
     #path('admin/', admin.site.urls),
@@ -129,7 +135,6 @@ urlpatterns = [
     path('api/user/view-profile/', view_own_profile, name='view_profile'),
     path('api/user/verification-request/', verification_request, name='verification_request'),
     path('api/user/online-status/', get_online_status, name='get_online_status'),
-    path('api/user/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin'),
     path('api/user/farmer/order-request/', order_request, name='order_request'),
     path('api/user/farmer/all-incomming-orders/', all_incomming_orders_for_farmer, name='all_incomming_orders_for_farmer'),
     path('api/user/consumer/all-orders/', all_consumer_orders, name='all_consumer_orders'),
@@ -137,6 +142,12 @@ urlpatterns = [
     path('api/user/transaction-history/', get_transaction_history_user, name='get_transaction_history_user'),
     path('api/admin/transaction-history/', get_transaction_history_admin, name='get_transaction_history_admin'),
    
+    # Wallet
+    path('api/user/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin'),
+    path('api/user/wallet/req-own-wallet/', req_own_wallet, name='req_own_wallet'),
+    path('api/user/wallet/req-wallet-by-admin/', req_wallet_by_admin, name='req_wallet_by_admin'),
+    path('api/user/wallet/change-wallet-pin/', change_wallet_pin, name='change_wallet_pin'),
+
     # Address and others
     path('api/admin/user-profile/', other_user_profile, name='other_user_profile'),
     path('api/admin/search-user/', search_user, name='search_user'),
@@ -179,8 +190,9 @@ urlpatterns = [
     path('api/home/refresh-wallet/', refresh_wallet, name='refresh_wallet'),
 
     # Profile
-    
     path('api/admin/user-profile/change-password/', change_password, name='change_password'), #checked
+    
+
     # Product
     path('api/product/add/', add_products, name='add_products'),
 ]

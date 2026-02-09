@@ -156,7 +156,12 @@ class Wallet(models.Model):
     """Wallet model for user balance and PIN management"""
     wallet_id = models.CharField(max_length=50, primary_key=True)
     user_id = models.ForeignKey(Users, on_delete=models.PROTECT)
-    amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    balance = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0.00,
+        validators=[MinValueValidator(0), MaxValueValidator(2000000.00)]
+    )
     pin = models.CharField(max_length=128)
     created_date = models.DateTimeField(default=timezone.now)
     is_active = models.BooleanField(default=False)
@@ -175,6 +180,7 @@ class Wallet(models.Model):
         """Update the PIN"""
         if len(new_pin) != 4 or not new_pin.isdigit():
             raise ValueError("PIN must be exactly 4 digits.")
+        self.is_active = True
         self.pin = make_password(new_pin)
         self.save(update_fields=['pin'])
 
@@ -406,7 +412,7 @@ class OrdProdLink(models.Model):
 class Transaction(models.Model):
     transaction_id = models.CharField(primary_key=True, editable=False)
     order = models.ForeignKey(OrderRequest, on_delete=models.PROTECT, db_index=True)
-    transaction_to = models.ForeignKey(Users, on_delete=models.PROTECT, related_name="transaction_to")
+    transaction_to = models.ForeignKey(Users, on_delete=models.PROTECT, related_name="transaction_to") # Receiver
     payment_method = models.CharField(max_length=50)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     currency = models.CharField(max_length=10, default='NRP')
@@ -415,7 +421,7 @@ class Transaction(models.Model):
     transaction_date = models.DateTimeField(default=timezone.now, db_index=True)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(null=True, blank=True)
-    initiated_by = models.ForeignKey(Users, on_delete=models.PROTECT, related_name="initiator")
+    initiated_by = models.ForeignKey(Users, on_delete=models.PROTECT, related_name="initiator") # Sender
 
     def __str__(self):
         return f'Transaction {self.transaction_id}: {self.status}'

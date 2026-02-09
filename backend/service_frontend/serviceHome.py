@@ -1,7 +1,7 @@
-from rest_framework.decorators import api_view, permission_classes, authentication_classes 
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
-from backend.models import Users, Verification, Product, Connections, OrderRequest, OrdProdLink, Wallet, OrdProdLink
+from backend.models import Users, Verification, Product, Connections, OrderRequest, OrdProdLink, Wallet, OrdProdLink, Transaction
 from backend.permissions import HasValidTokenForUser
 from rest_framework.permissions import AllowAny
 from django.db.models import Q, Sum, F
@@ -31,9 +31,9 @@ def dashboard_fullfillment(request):
     elif user.profile_id.user_type in ['Farmer', 'VerifiedFarmer']:
         return Response({
             'username': user.get_full_name_from_userModel(),
-            'connections': get_user_total_connections(user_id),
-            'wallet_balance': get_wallet_balance(user_id),
-            #'todays_income': get_todays_income(user_id),
+            'connections': get_user_total_connections(user),
+            'wallet_balance': get_wallet_balance(user),
+            'todays_income': get_todays_income(user),
             #'total_orders': get_farmer_orderRequests(user_id)
         }, status=status.HTTP_200_OK)
 
@@ -86,7 +86,9 @@ def dashboard_fullfillment_test(request):
 
     return Response({'detail': 'Unauthorized user type'}, status=status.HTTP_403_FORBIDDEN)
 
-
+##########################################################################################
+#                            Helper Methode Start
+##########################################################################################
 # def get_total_farmers():
 #     return Users.objects.filter(
 #         profile_id__user_type='Farmer',
@@ -122,34 +124,45 @@ def get_farmer_orderRequests(farmer):
 def get_orderRequested_by_consumer(consumer):
     return OrderRequest.objects.filter(consumer_id=consumer, order_status = "PENDING").count()
 
-def get_wallet_balance(user_id):
-    return Wallet.objects.get(user_id=user_id).amount
+def get_wallet_balance(user):
+    try:
+        balance = Wallet.objects.get(user_id=user).balance
+    except Wallet.DoesNotExist:
+        return 0
+    return balance
 
 def get_todays_income(farmer):
     # 1. Get today's date
     today = timezone.now().date()
-    
-    # 2. Query OrdProdLink to sum up the specific items sold by this farmer
-    income_data = OrdProdLink.objects.filter(
-        # Filter 1: Ensure the product belongs to the specific farmer
-        p_id__user_id=farmer,
-        
-        # Filter 2: Look for transactions that happened today
-        # We traverse: OrdProdLink -> OrderRequest -> Transaction
-        order_id__transaction__transaction_date__date=today,
-        
-        # Filter 3: Ensure the transaction was successful
-        # (Replace 'SUCCESS' with whatever string you use for completed payments, e.g., 'COMPLETED')
-        order_id__transaction__status='SUCCESS' 
+    income_data = Transaction.objects.filter(
+        transaction_to=farmer,
+        transaction_date__date=today,
+        status = 'SUCCESSFUL'
     ).aggregate(
-        # 3. Calculate total: Quantity * Price at Sale
-        today_income=Sum(F('quantity') * F('price_at_sale'))
+        today_income = Sum(F('amount'))
     )
-
     # 4. Handle cases where there are no sales (returns None), default to 0
-    return income_data['total_income'] or 0
+    return income_data['today_income'] or 0
+
+def get_todays_expense(user):
+    today = timezone.now().date()
+    expense_data = Transaction.objects.filter(
+        initiated_by=user,
+        transaction_date__date=today,
+        status = 'SUCCESSFUL' 
+    ).aggregate(
+        today_expense = Sum(F('amount'))
+    )
+    return expense_data['today_expense'] or 0
 
 
+##########################################################################################
+#                             Helper Methode End
+##########################################################################################
+
+##########################################################################################
+#                            refresh_wallet Start
+##########################################################################################
 @api_view(['POST'])
 @permission_classes([HasValidTokenForUser])
 def refresh_wallet(request):
@@ -159,13 +172,15 @@ def refresh_wallet(request):
     if userid is None:
         return Response({'error': 'Missing user-id header'}, status=status.HTTP_400_BAD_REQUEST)
     
-
-
-    balance = "2000.00"
-    b = "100.00"
+    balance = "20000.00"
+    b = "10000.00"
     return Response(
         {
         'balance': balance,
         'todays_income': b
         },
         status=status.HTTP_200_OK)
+##########################################################################################
+#                            refresh_wallet End
+##########################################################################################
+

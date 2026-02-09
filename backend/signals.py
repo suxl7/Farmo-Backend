@@ -1,7 +1,7 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
-from backend.models import Wallet, Transaction, UsersProfile
+from backend.models import Wallet, Transaction, UsersProfile, Users
 
 
 @receiver(post_save, sender='backend.Users')
@@ -11,7 +11,8 @@ def create_user_wallet(sender, instance, created, **kwargs):
 		Wallet.objects.create(
 			wallet_id=f"W-{instance.user_id}",
 			user_id=instance,
-			amount=0.00,
+			balance=0,
+			pin = None,
 			created_date=timezone.now(),
 			is_active=False
 		)
@@ -21,14 +22,13 @@ def create_user_wallet(sender, instance, created, **kwargs):
 def transaction_created_for_order(sender, instance, created, **kwargs):
 	'''Automatically create a transaction when a new order is created'''
 	userid = instance.get_pid_from_orderid[0].user_id
-	farmer_wallet = Wallet.objects.get(user_id=userid)
 	payment_method_accepted = UsersProfile.objects.get(user_id=userid).payment_method
 
 	if instance.order_status == 'ACCEPTED':
 		Transaction.objects.create(
 			transaction_id=f'T-{instance.order_id}',
 			order=instance,
-			Tranaction_to=farmer_wallet,
+			Tranaction_to=userid,
 			payment_method= payment_method_accepted,
 			amount=instance.total_cost,
 			currency='NRP',

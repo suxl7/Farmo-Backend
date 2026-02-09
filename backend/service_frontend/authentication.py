@@ -9,7 +9,6 @@ from ..models import Users, Tokens, UserActivity, OTP
 from django.utils import timezone
 # from datetime import timedelta
 from django.db.models import Q
-from backend.utils.validators import validate_nepali_phone
 from backend.utils.smallerServiceHandler import get_half_email
 from ..utils.otpAndEmailService import send_otp_to_email
 
@@ -230,35 +229,8 @@ def login_change_password(request):
 
     
 ##########################################################################################
-#                            Login
+#                            Login End
 ##########################################################################################
-
-@api_view(['POST'])
-def verify_wallet_pin(request):
-    """Verify wallet PIN for authenticated user before transactions"""
-    # Get wallet ID and PIN from request
-    wallet_id = request.data.get('wallet_id')
-    pin = request.data.get('pin')
-    
-    # Validate required fields
-    if not wallet_id or not pin:
-        return Response({
-            #'req_access': False,
-            'error_code': 'MISSING_REQUIRED_FIELDS'
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    try:
-        from ..models import Wallet
-        # Ensure wallet belongs to authenticated user (security check)
-        wallet = Wallet.objects.get(wallet_id=wallet_id, user=request.user)
-        # Verify hashed PIN matches
-        if wallet.check_pin(pin):
-            return Response({'verified': True}, status=status.HTTP_200_OK)
-        # PIN verification failed
-        return Response({'error': 'Invalid PIN'}, status=status.HTTP_401_UNAUTHORIZED)
-    except Wallet.DoesNotExist:
-        # Wallet not found or doesn't belong to user
-        return Response({'error': 'Wallet not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 ##########################################################################################
