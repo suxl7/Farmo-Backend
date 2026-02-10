@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from .models import (
-    Users, UsersProfile, Wallet, Transaction, Product, ProductMedia,
+    Users, UsersProfile, Wallet, Transaction, Product,
     ProductRating, Rating, Verification, OrderRequest, OrdProdLink, Tokens, UserActivity, Connections,  OTP, FarmProducts
 )
 
@@ -59,17 +59,8 @@ class WalletSerializer(serializers.ModelSerializer):
 
 
 
-class ProductMediaSerializer(serializers.ModelSerializer):
-    """Serializer for ProductMedia model"""
-    class Meta:
-        model = ProductMedia
-        fields = '__all__'
-
-
 class ProductSerializer(serializers.ModelSerializer):
     """Serializer for Product model with nested media"""
-    media = ProductMediaSerializer(many=True, read_only=True)
-    
     class Meta:
         model = Product
         fields = '__all__'

@@ -440,15 +440,16 @@ def get_user_profile_data(user):
     # Use default profile picture if none exists
     if not profile.profile_url:
         if profile.user_type.lower() in ['verifiedfarmer', 'farmer']:
-            profile_url = 'backend\static\pp-farmer.png'
+            profile_url = 'backend\static\DefaultProfilePicture\pp-farmer.png'
+
         elif profile.user_type.lower() in ['verifiedconsumer','consumer']:
-            profile_url = 'backend\static\pp-consumer.png'
+            profile_url = 'backend\static\DefaultProfilePicture\pp-consumer.png'
         elif profile.user_type.lower() == 'admin':
-            profile_url = 'backend\static\pp-admin.png'
+            profile_url = 'backend\static\DefaultProfilePicture\pp-admin.png'
         elif profile.user_type.lower() == 'superadmin':
-            profile_url = 'backend\static\pp-superadmin.png'
+            profile_url = 'backend\static\DefaultProfilePicture\pp-superadmin.png'
         else:
-            profile_url = 'backend\static\profile-img-00001.png'
+            profile_url = 'backend\static\DefaultProfilePicture\pp-guest.png'
 
     # Encode profile picture to base64
     try:
@@ -457,8 +458,7 @@ def get_user_profile_data(user):
         
         mime_type, _ = mimetypes.guess_type(profile_url)
     except FileNotFoundError:
-        # Fallback to default if file doesn't exist
-        with open('backend/static/profile-img-00001.png', 'rb') as image_file:
+        with open('backend\static\DefaultProfilePicture\pp-guest.png', 'rb') as image_file:
             encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
         mime_type = 'image/png'
     

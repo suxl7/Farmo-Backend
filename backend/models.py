@@ -202,24 +202,30 @@ class Product(models.Model):
     is_organic = models.BooleanField(default=False)
     quantity_available = models.IntegerField()
     cost_per_unit = models.DecimalField(max_digits=10, decimal_places=2)
+    discount_type = models.CharField(max_length=50, blank=True, null=True)
+    discount = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
     produced_date = models.DateField()
     registered_at = models.DateTimeField(default=timezone.now)
     expiry_Date = models.DateField(null=True, blank=True)
     description = models.TextField(blank=True, null=True)
     delivery_option = models.CharField(max_length=100, default='Not-Available')
     product_status = models.CharField(max_length=100,  default='Available')
+    media_url = models.JSONField(max_length=255, blank=True, null=True)
     
 
     @classmethod
-    def create_product(cls, user_id, name, category, is_organic, quantity_available, cost_per_unit, produced_date, expiry_Date, description, delivery_option):
+    def create_product(cls, user_id,media_url, name, category, is_organic, discount_type, discount, quantity_available, cost_per_unit, produced_date, expiry_Date, description, delivery_option):
         """Create a new product"""
         obj = cls.objects.create(
             user_id=user_id,
+            media_url=media_url,
             name=name,
             category=category,
             is_organic=is_organic,
             quantity_available=quantity_available,
             cost_per_unit=cost_per_unit,
+            discount_type=discount_type,
+            discount=discount,
             registered_at=timezone.now(),
             produced_date=produced_date,
             expiry_Date=expiry_Date,
@@ -241,40 +247,6 @@ class Product(models.Model):
             )
         ]
 
-
-class ProductMedia(models.Model):
-    """ProductMedia model for product images and videos"""
-    media_id = models.AutoField(primary_key=True)
-    p_id = models.ForeignKey(Product, on_delete=models.PROTECT, null=True, blank=True)
-    media_url = models.CharField(max_length=255)
-    media_type = models.CharField(max_length=10, blank=True, null=True)
-
-    @classmethod
-    def create_media(cls,P_id, media_url, media_type):
-        """Create a new media entry"""
-        
-        obj = cls.objects.create(
-            p_id=P_id,
-            media_url=media_url,
-            media_type=media_type
-        )
-        return obj.media_id
-    
-    @property
-    def get_media_url(self):
-        return self.media_url
-
-
-    def __str__(self):
-        return f"Media {self.media_id}"
-
-    class Meta:
-        constraints = [
-            models.CheckConstraint(
-                condition=models.Q(media_type__in=['image', 'video']),
-                name='valid_media_type'
-            )
-        ]
 
 
 class ProductRating(models.Model):
