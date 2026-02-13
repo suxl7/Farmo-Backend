@@ -504,9 +504,9 @@ def view_own_profile(request):
 @api_view(['POST'])
 #@permission_classes([HasValidTokenForUser, IsAdmin])
 @permission_classes([AllowAny])
-def view_user_profile(request):
+def view_user_profile_by_admin(request):
     """View any user's profile - admin only"""
-    userid = request.data.get('target_user_id')  # Changed from request.data for GET
+    userid = request.data.get('target_user_id')  
     
     if not userid:
         return Response({

@@ -1,6 +1,6 @@
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
-from backend.permissions import HasValidTokenForUser, IsAdmin
+from backend.permissions import HasValidTokenForUser, IsAdmin, IsFarmerOrConsumer
 from rest_framework.response import Response
 from rest_framework import status
 from backend.models import Users, Wallet, Transaction
@@ -8,25 +8,18 @@ from backend.serializers import VerificationSerializer as VS
 import secrets
 from django.utils import timezone
 from django.utils.crypto import get_random_string
-from backend.utils.media_handler import FileManager
-from django.core.exceptions import ValidationError
 from rest_framework.views import APIView
 from backend.service_frontend.serviceHome import  get_todays_income, get_todays_expense
 
 ##########################################################################################
 #                            req_own_wallet Start
 ##########################################################################################
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-#@permission_classes([HasValidTokenForUser])
-def req_own_wallet(request):
-    user_id = request.headers.get('user-id')
+def wallet_req(user_id):
     user = Users.objects.get(user_id=user_id)
     try:
         wallet = Wallet.objects.get(user_id=user)
         if not wallet.is_active:
-            return Response({'error': 'Wallet is not active'}, status=status.HTTP_400_BAD_REQUEST)
+            return {'error': 'Wallet is not active'}, status.HTTP_400_BAD_REQUEST
         if user.profile_id.user_type in ['Farmer', 'VerifiedFarmer']:
             resp = {
                 'wallet_id': wallet.wallet_id,
@@ -41,15 +34,39 @@ def req_own_wallet(request):
                 'todays_expense': get_todays_expense(user)
             }
         else:
-            return Response({'error': 'Forbidden User'}, status=status.HTTP_403_FORBIDDEN)
+            return {'error': 'Forbidden User'}, status.HTTP_403_FORBIDDEN
 
-        return Response(resp, status=status.HTTP_200_OK)
+        return resp, status.HTTP_200_OK
     
     except Wallet.DoesNotExist:
-        return Response({'error': 'Wallet not found'}, status=status.HTTP_404_NOT_FOUND)
+        return {'error': 'Wallet not found'}, status.HTTP_404_NOT_FOUND
     
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+#@permission_classes([HasValidTokenForUser])
+def req_own_wallet(request):
+    user_id = request.headers.get('user-id')
+    response, status = wallet_req(user_id)
+    return Response(response, status=status)
+
 ##########################################################################################
 #                            req_own_wallet End
+##########################################################################################
+##########################################################################################
+#                            req_wallet_by_admin Start
+##########################################################################################
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+#@permission_classes([HasValidTokenForUser, IsAdmin])
+def req_wallet_by_admin(request):
+    user_id = request.data.get('user-id')
+    response, status = wallet_req(user_id)
+    return Response(response, status=status)
+
+##########################################################################################
+#                            req_wallet_by_admin End
 ##########################################################################################
 
 ##########################################################################################
@@ -88,20 +105,6 @@ def change_wallet_pin(request):
 #                             Change Wallet Pin End
 ##########################################################################################
 
-
-##########################################################################################
-#                            req_own_wallet Start
-##########################################################################################
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-#@permission_classes([HasValidTokenForUser, IsAdmin])
-def req_wallet_by_admin(request):
-    pass
-
-##########################################################################################
-#                            req_own_wallet End
-##########################################################################################
 ##########################################################################################
 #                            verify_wallet_pin Start
 ##########################################################################################
@@ -117,12 +120,10 @@ def verify_wallet_pin(request):
     # Validate required fields
     if not pin:
         return Response({
-            #'req_access': False,
-            'error': 'Enter Pin'
+            'error': 'Enter 4 digit Pin'
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        # Ensure wallet belongs to authenticated user (security check)
         user = Users.objects.get(user_id=userid)
         wallet = Wallet.objects.get(user_id=user)
         # Verify hashed PIN matches
@@ -133,8 +134,28 @@ def verify_wallet_pin(request):
         return Response({'error': 'Invalid PIN'}, status=status.HTTP_401_UNAUTHORIZED)
     
     except Wallet.DoesNotExist or Users.DoesNotExist:
-        # Wallet not found or doesn't belong to user
         return Response({'error': 'Wallet not found'}, status=status.HTTP_404_NOT_FOUND)
 ##########################################################################################
 #                            verify_wallet_pin End
+##########################################################################################
+
+##########################################################################################
+#                            forget_wallet_pin End
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+#@permission_classes([HasValidTokenForUser, IsFarmerOrConsumer])
+def forget_wallet_pin(request):
+    user_id = request.headers.get('user-id')
+    user = Users.objects.get(user_id=user_id)
+    password = request.data.get('password')
+    new_pin = request.data.get('new_pin')
+
+    if not user.check_password(password):
+        return Response({'error': 'Incorrect password'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    Wallet.objects.filter(user_id=user).update(pin=new_pin)
+    return Response({'message': 'Wallet PIN updated successfully'}, status=status.HTTP_200_OK)
+
+#                            forget_wallet_pin End
 ##########################################################################################

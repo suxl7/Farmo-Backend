@@ -241,9 +241,10 @@ def login_change_password(request):
 def logout(request):
     """Logout user by deactivating current token"""
     token = request.headers.get("token")
+    user = request.headers.get("user-id")
     
     try:
-        token_obj = Tokens.objects.get(token=token)
+        token_obj = Tokens.objects.get(token=token, user_id=user)
         token_obj.deactivate()
         
         return Response({}, status=status.HTTP_200_OK)
@@ -257,11 +258,10 @@ def logout(request):
 @permission_classes([HasValidTokenForUser])
 def logout_all_devices(request):
     """Logout user from all devices by deactivating all tokens"""
-    token = request.headers.get("token")
+    #token = request.headers.get("token")
+    user = request.headers.get("user-id")
     
     try:
-        token_obj = Tokens.objects.get(token=token)
-        user = token_obj.user_id
         Tokens.deactivate_all_user_tokens(user)
         return Response({'message': 'Logout from all devices successful!'}, status=status.HTTP_200_OK)
     except Tokens.DoesNotExist:

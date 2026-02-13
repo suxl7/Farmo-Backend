@@ -44,7 +44,12 @@ class HasValidTokenForUser(BasePermission):
         #     return False
 
         try:
-            token_obj = Tokens.objects.get(token=token_value, user_id__user_id=user_id)
+            user = Users.objects.get(user_id=user_id, profile_status="ACTIVATED")
+        except Users.DoesNotExist:
+            return False
+
+        try:
+            token_obj = Tokens.objects.get(token=token_value, user_id=user)
         except Tokens.DoesNotExist:
             return False
 
@@ -66,7 +71,7 @@ class IsFarmer(BasePermission):
         if not user_id:
             return False
         
-        user_type = Users.objects.get(user_id=user_id).profile_id.user_type
+        user_type = Users.objects.get(user_id=user_id, profile_status="ACTIVATED").profile_id.user_type
 
         if user_type == "Farmer" or user_type == "VerifiedFarmer":
             return True
@@ -84,7 +89,7 @@ class IsConsumer(BasePermission):
         if not user_id:
             return False
 
-        user_type = Users.objects.get(user_id=user_id).profile_id.user_type
+        user_type = Users.objects.get(user_id=user_id, profile_status="ACTIVATED").profile_id.user_type
         if user_type == "Consumer" or user_type == "VerifiedConsumer":
             return True
 
@@ -101,7 +106,7 @@ class IsAdmin(BasePermission):
         if not user_id:
             return False
 
-        user = Users.objects.get(user_id=user_id)
+        user = Users.objects.get(user_id=user_id, profile_status="ACTIVATED")
         if user.is_admin:
             return True
 
@@ -119,7 +124,7 @@ class IsSuperAdmin(BasePermission):
             return False
 
         #user_type = Users.objects.get(user_id=user_id).profile_id.user_type
-        user_type = Users.objects.get(user_id=user_id).get_usertype_from_userModel()
+        user_type = Users.objects.get(user_id=user_id, profile_status="ACTIVATED").get_usertype_from_userModel()
         if user_type == "SuperAdmin":
             return True
 
@@ -138,7 +143,7 @@ class IsVerifiedConsumer(BasePermission):
         if not user_id:
             return False
 
-        user = Users.objects.select_related('profile_id').get(user_id=user_id)
+        user = Users.objects.select_related('profile_id').get(user_id=user_id, profile_status="ACTIVATED")
         user_type = user.profile_id.user_type
         if user_type == "VerifiedConsumer":
             return True
@@ -156,9 +161,27 @@ class IsVerifiedFarmer(BasePermission):
         if not user_id:
             return False
 
-        user = Users.objects.select_related('profile_id').get(user_id=user_id)
+        user = Users.objects.select_related('profile_id').get(user_id=user_id, profile_status="ACTIVATED")
         user_type = user.profile_id.user_type
         if user_type == "VerifiedFarmer":
+            return True
+
+        return False
+    
+
+class IsFarmerOrConsumer(BasePermission):
+    """Allow access only if requester is a consumer or Farmer"""
+    def has_permission(self, request, view):
+        # Expect frontend to send headers:
+        # user_id: <user-id>
+        user_id = request.headers.get("user-id")
+
+        if not user_id:
+            return False
+
+        user = Users.objects.select_related('profile_id').get(user_id=user_id, profile_status="ACTIVATED")
+        user_type = user.profile_id.user_type
+        if user_type in ["Consumer","VerifiedFarmer", "VerifiedConsumer", "Farmer"]:
             return True
 
         return False

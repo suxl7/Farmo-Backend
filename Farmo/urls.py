@@ -45,7 +45,7 @@ from backend.service_frontend.userProfile import (
     update_payment_method,
     change_password,
     view_own_profile,
-    view_user_profile)
+    view_user_profile_by_admin)
 
 from backend.service_frontend.servicesForUsers import (
     other_user_profile,
@@ -103,14 +103,16 @@ from backend.service_frontend.serviceHome import (
 )
 
 from backend.service_frontend.product import (
-    add_products
+    add_products,
+    add_product_FromAdmin
 )
 
 from backend.service_frontend.serviceWallet import (
     req_own_wallet,
     req_wallet_by_admin,
     change_wallet_pin,
-    verify_wallet_pin
+    verify_wallet_pin,
+    forget_wallet_pin
 )
 
 
@@ -130,7 +132,7 @@ urlpatterns = [
     path('api/auth/forgot-password-change-password/', forget_password_change_password, name='forget_password_change_password'), # checked
 
     # User
-    path('api/user/view-user-profile/', view_user_profile, name='view_user_profile'),
+    path('api/admin/view-user-profile/', view_user_profile_by_admin, name='view_user_profile'),
     path('api/user/update-profile-picture/', update_profile_picture, name='update_profile_picture'),
     path('api/user/view-profile/', view_own_profile, name='view_profile'),
     path('api/user/verification-request/', verification_request, name='verification_request'),
@@ -145,8 +147,9 @@ urlpatterns = [
     # Wallet
     path('api/user/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin'),
     path('api/user/wallet/req-own-wallet/', req_own_wallet, name='req_own_wallet'),
-    path('api/user/wallet/req-wallet-by-admin/', req_wallet_by_admin, name='req_wallet_by_admin'),
+    path('api/admin/wallet/req-wallet-by-admin/', req_wallet_by_admin, name='req_wallet_by_admin'),
     path('api/user/wallet/change-wallet-pin/', change_wallet_pin, name='change_wallet_pin'),
+    path('api/user/wallet/forget-wallet-pin/', forget_wallet_pin, name='forget_wallet_pin'),
 
     # Address and others
     path('api/admin/user-profile/', other_user_profile, name='other_user_profile'),
@@ -175,7 +178,6 @@ urlpatterns = [
     path('api/farmer/product-rating/delete/<int:pk>/', DeleteProductRate.as_view(), name='delete_product_rate'),
     path('api/farmer/product-rating/list/<int:product_id>/', ListProductRatingsByProduct.as_view(), name='list_product_ratings_by_product'),
     path('api/farmer/product-rating/profile/', product_profile_rating, name='product_profile_rating'),
-
     path('api/consumer/rating/create/', RateConsumer.as_view(), name='rate_consumer'),
     path('api/consumer/rating/edit/<int:pk>/', EditConsumerRate.as_view(), name='edit_consumer_rate'),
     path('api/consumer/rating/view/<int:pk>/', ViewConsumerRate.as_view(), name='view_consumer_rate'),
@@ -195,6 +197,7 @@ urlpatterns = [
 
     # Product
     path('api/product/add/', add_products, name='add_products'),
+    path('api/admin/product/add/', add_product_FromAdmin, name='add_product_FromAdmin'),
 ]
 
 # Serve media files during development

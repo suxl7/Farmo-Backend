@@ -159,6 +159,7 @@ REST_FRAMEWORK = {
         'backend.permissions.IsConsumer',
         'backend.permissions.IsVerifiedFarmer',
         'backend.permissions.IsVerifiedConsumer',
+        'backend.permissions.IsFarmerOrConsumer',
     ],
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
