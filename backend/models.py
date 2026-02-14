@@ -612,17 +612,49 @@ class TrackUser(models.Model):
 
 
 class FarmProducts(models.Model):
+    CATEGORY_CHOICES = [
+        ('animal-feed', 'Animal Feed'),
+        ('beverage', 'Beverage'),
+        ('dairy', 'Dairy'),
+        ('dry-fruit-nut', 'Dry Fruit & Nut'),
+        ('egg', 'Egg'),
+        ('fiber', 'Fiber'),
+        ('fish', 'Fish'),
+        ('flour', 'Flour'),
+        ('flower', 'Flower'),
+        ('fruit', 'Fruit'),
+        ('general', 'General'),
+        ('grain', 'Grain'),
+        ('legume', 'Legume'),
+        ('livestock-poultry', 'Livestock & Poultry'),
+        ('meat', 'Meat'),
+        ('medicinal-herb', 'Medicinal Herb'),
+        ('misc', 'Miscellaneous'),
+        ('mushroom', 'Mushroom'),
+        ('oil', 'Oil'),
+        ('processed-food', 'Processed Food'),
+        ('salt', 'Salt'),
+        ('spice', 'Spice'),
+        ('sweetener', 'Sweetener'),
+        ('timber', 'Timber'),
+        ('tobacco', 'Tobacco'),
+        ('tool-equipment', 'Tool & Equipment'),
+        ('vegetable', 'Vegetable'),
+    ]
+
     primary_name = models.CharField("English Name", max_length=255, null=True, blank=True, db_index=True)
     secondary_name = models.CharField("Nepali Name", max_length=255, null=True, blank=True, db_index=True)
-
+    category = models.CharField("Category", max_length=50, choices=CATEGORY_CHOICES, null=True, blank=True, db_index=True)
 
     def __str__(self):
-        return f"{self.primary_name} - {self.secondary_name}"
+        # Adding the category to the string representation makes debugging and the admin panel easier to read
+        return f"{self.primary_name} - {self.secondary_name} [{self.category}]"
     
     class Meta:
         indexes = [
             models.Index(fields=["primary_name"]),
             models.Index(fields=["secondary_name"]),
+            models.Index(fields=["category"]),  # Added index to speed up category-based filtering
             models.Index(fields=["primary_name", "secondary_name"])
         ]
         constraints = [

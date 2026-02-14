@@ -116,7 +116,11 @@ def handle_product_creation(user_id, data, media_files):
 ##########################################################################################
 #                            Check FarmProduct Category Start
 ##########################################################################################
-
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def all_categories(request):
+    
+    return Response({'categories': list()}, status=status.HTTP_200_OK)
 ##########################################################################################
 #                            Check FarmProduct Category End
 ##########################################################################################

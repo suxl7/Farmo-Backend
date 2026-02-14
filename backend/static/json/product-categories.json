@@ -1,0 +1,59 @@
+{
+  "categories": [
+    {
+      "slug": "food-crop",
+      "display_name": "Food Crop",
+      "description": "Staple grains and primary calorie sources such as rice, maize, and wheat."
+    },
+    {
+      "slug": "cash-crop",
+      "display_name": "Cash Crop",
+      "description": "Crops grown primarily for sale and profit, including potatoes and oilseeds."
+    },
+    {
+      "slug": "industrial-crop",
+      "display_name": "Industrial Crop",
+      "description": "Raw materials for industries, such as sugarcane, jute, tea, and coffee."
+    },
+    {
+      "slug": "pulse-legume",
+      "display_name": "Pulse & Legume",
+      "description": "Protein-rich seeds like lentils, chickpeas, and beans."
+    },
+    {
+      "slug": "vegetable",
+      "display_name": "Vegetable",
+      "description": "Fresh produce including leafy greens, tomatoes, and seasonal vegetables."
+    },
+    {
+      "slug": "fruit",
+      "display_name": "Fruit",
+      "description": "Tropical and temperate fruits like mangoes, citrus, and apples."
+    },
+    {
+      "slug": "spice-herb",
+      "display_name": "Spice & Herb",
+      "description": "Aromatic and medicinal plants such as ginger, cardamom, and turmeric."
+    },
+    {
+      "slug": "livestock-poultry",
+      "display_name": "Livestock & Poultry",
+      "description": "Animal products including meat, milk, and eggs from cattle, goats, and birds."
+    },
+    {
+      "slug": "fishery",
+      "display_name": "Fishery",
+      "description": "Aquaculture and fish-related farm products."
+    },
+    {
+      "slug": "animal-feed",
+      "display_name": "Animal Feed",
+      "description": "Fodder and processed feed like rice bran, mustard cake, and straw."
+    },
+    {
+      "slug": "tool-equipment",
+      "display_name": "Tool & Equipment",
+      "description": "Traditional and modern agricultural implements like ploughs and baskets."
+    }
+  ]
+}
