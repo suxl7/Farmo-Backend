@@ -115,9 +115,17 @@ from backend.service_frontend.serviceWallet import (
     forget_wallet_pin
 )
 
+from backend.service_frontend.internal_service import (
+    update_farm_products,
+    download_farm_products)
+
 
 urlpatterns = [
     #path('admin/', admin.site.urls),
+
+    path("api/internal/update-farm-products/", update_farm_products, name="update_farm_products"),
+    path("api/internal/download-farm-products/", download_farm_products, name="download_farm_products"),
+
     # Authentication
     path('api/auth/check-userid/', check_userid_available, name='check_userid_available'),
     path('api/auth/login/', login, name='login'), # checked

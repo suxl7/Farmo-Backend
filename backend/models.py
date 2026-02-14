@@ -612,8 +612,8 @@ class TrackUser(models.Model):
 
 
 class FarmProducts(models.Model):
-    primary_name = models.CharField(max_length=255, null=True, blank=True, db_index=True)
-    secondary_name = models.CharField(max_length=255, null=True, blank=True, db_index=True)
+    primary_name = models.CharField("English Name", max_length=255, null=True, blank=True, db_index=True)
+    secondary_name = models.CharField("Nepali Name", max_length=255, null=True, blank=True, db_index=True)
 
 
     def __str__(self):
@@ -625,5 +625,9 @@ class FarmProducts(models.Model):
             models.Index(fields=["secondary_name"]),
             models.Index(fields=["primary_name", "secondary_name"])
         ]
-
-        unique_together = ('primary_name', 'secondary_name')
+        constraints = [
+            models.UniqueConstraint(
+                fields=["primary_name", "secondary_name"],
+                name ="unique_product_pair"
+            )
+        ]
