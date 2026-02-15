@@ -2,13 +2,14 @@ from backend.permissions import HasValidTokenForUser, IsFarmer, IsAdmin
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
-from backend.models import Users, Product
+from backend.models import Users, Product, FarmProducts
 from backend.utils.media_handler import FileManager
 from django.db.models import Q  
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework.permissions import AllowAny
 #import mimetypes
+import json
 import secrets
 
 ##########################################################################################
@@ -118,9 +119,32 @@ def handle_product_creation(user_id, data, media_files):
 ##########################################################################################
 @api_view(['POST'])
 @permission_classes([AllowAny])
-def all_categories(request):
-    
-    return Response({'categories': list()}, status=status.HTTP_200_OK)
+def all_available_categories(request):
+    try:
+        with open("backend/static/json/product-categories.json") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return Response({'categories': []}, status=status.HTTP_200_OK)
+
+    return Response({'categories': data}, status=status.HTTP_200_OK)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def available_farm_product_on_category(request):
+    category = request.data.get('category')
+    try:
+        framProduct = FarmProducts.objects.filter(category = category).order_by('id')
+        data = []
+        for p in framProduct:
+            data.append({
+                "id": p.id,
+                "english_name": p.primary_name,
+                "nepali_name": p.secondary_name,
+            })
+            
+    except FarmProducts.DoesNotExist:
+        return Response({}, status=status.HTTP_404_NOT_FOUND)
+    return Response({"farm_products":data},status=status.HTTP_200_OK)
 ##########################################################################################
 #                            Check FarmProduct Category End
 ##########################################################################################

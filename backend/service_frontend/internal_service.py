@@ -7,7 +7,6 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
-from backend.permissions import HasValidTokenForUser, IsFarmer, IsAdmin
 from rest_framework.permissions import AllowAny
 
 
@@ -48,7 +47,7 @@ def update_farm_products(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def download_farm_products(request):
-    products = FarmProducts.objects.all().order_by('id')
+    products = FarmProducts.objects.all().group_by('category')
     
     data = []
     for p in products:

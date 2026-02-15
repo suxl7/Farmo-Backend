@@ -104,7 +104,9 @@ from backend.service_frontend.serviceHome import (
 
 from backend.service_frontend.product import (
     add_products,
-    add_product_FromAdmin
+    add_product_FromAdmin,
+    all_available_categories,
+    available_farm_product_on_category
 )
 
 from backend.service_frontend.serviceWallet import (
@@ -206,6 +208,8 @@ urlpatterns = [
     # Product
     path('api/product/add/', add_products, name='add_products'),
     path('api/admin/product/add/', add_product_FromAdmin, name='add_product_FromAdmin'),
+    path('api/product/category/', all_available_categories, name='all_available_categories'),
+    path('api/product/category/products/', available_farm_product_on_category, name='available_farm_product_on_category'),
 ]
 
 # Serve media files during development

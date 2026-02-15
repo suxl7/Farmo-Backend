@@ -595,21 +595,6 @@ class OTP(models.Model):
             )
         ]
 
-class TrackUser(models.Model):
-    user_id = models.ForeignKey(Users, on_delete=models.CASCADE)
-    product_catagory = models.CharField(max_length=50, blank=True, null=True)
-    score = models.BigIntegerField(blank=True, null=True)
-    
-
-    class Meta:
-        indexes = [
-            models.Index(fields=["user_id", "product_catagory"])
-        ]
-
-
-    def __str__(self):
-        return f"{self.user_id} - {self.product_catagory}"
-
 
 class FarmProducts(models.Model):
     CATEGORY_CHOICES = [
@@ -663,3 +648,26 @@ class FarmProducts(models.Model):
                 name ="unique_product_pair"
             )
         ]
+
+
+class TrackUser(models.Model):
+    user_id = models.ForeignKey(Users, on_delete=models.CASCADE)
+    farmProduct = models.ForeignKey(FarmProducts, on_delete=models.CASCADE, null=True, blank=True, db_index=True)
+    product_catagory = models.CharField(max_length=50, blank=True, null=True, db_index=True)
+    score = models.BigIntegerField(blank=True, null=True)
+    
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user_id", "product_catagory"]),
+            models.Index(fields=["user_id", "score"]),
+            models.Index(fields=["farmProduct", "score"]),
+            models.Index(fields=["product_catagory", "score"]),
+            models.Index(fields=["user_id", "farmProduct"]),
+            models.Index(fields=["user_id", "score", "farmProduct"]),
+            models.Index(fields=["user_id", "product_catagory", "score"])
+        ]
+
+
+    def __str__(self):
+        return f"{self.user_id} - {self.farmProduct}"
