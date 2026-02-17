@@ -536,15 +536,24 @@ class Connections(models.Model):
         ]
     
 
-
 class OTP(models.Model):
     """Track OTPs for user authentication"""
+    CHOICE_OTP_TYPE = [
+    ('LOGIN', 'Login'),
+    ('FORGOT_PASSWORD', 'Forgot Password'),
+    ('REGISTER', 'Register'),
+    ('ORDER', 'Order'),
+    ('VERIFICATION', 'Verification'),
+    ('WALLET_WITHDRAWAL', 'Wallet Withdrawal')
+]
     user_id = models.ForeignKey(Users, on_delete=models.CASCADE)
     otp = models.CharField(max_length=6)
-    otp_type = models.CharField(max_length=20, default='LOGIN')
+    otp_type = models.CharField(max_length=20, choices=CHOICE_OTP_TYPE, default='LOGIN')
     otp_status = models.CharField(max_length=20, default='ACTIVE')
     created_at = models.DateTimeField(default=timezone.now)
     expires_at = models.DateTimeField()
+    description = models.TextField(blank=True, null=True)  # typo fixed
+
 
     def __str__(self):
         return f"{self.user_id} - {self.otp_type} ({self.otp_status})"
@@ -575,7 +584,7 @@ class OTP(models.Model):
         
     
     @classmethod
-    def create_otp(cls, user, otp, otp_type, created_at,expires_in=2):
+    def create_otp(cls, user, otp, otp_type, created_at,expires_in=5, description = None):
         """Create a new OTP"""
         return cls.objects.create(
             user_id=user,
@@ -583,7 +592,8 @@ class OTP(models.Model):
             otp_type=otp_type,
             otp_status='ACTIVE',
             created_at=created_at,
-            expires_at=timezone.now() + timezone.timedelta(minutes=expires_in)
+            expires_at=timezone.now() + timezone.timedelta(minutes=expires_in),
+            description=description
         )
 
 
@@ -668,6 +678,6 @@ class TrackUser(models.Model):
             models.Index(fields=["user_id", "product_catagory", "score"])
         ]
 
-
     def __str__(self):
         return f"{self.user_id} - {self.farmProduct}"
+    

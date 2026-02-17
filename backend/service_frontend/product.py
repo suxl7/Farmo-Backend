@@ -29,8 +29,19 @@ def add_products(request):
 @permission_classes([HasValidTokenForUser, IsAdmin])
 def add_product_FromAdmin(request):
     user_id = request.data.get('user_id')
-    pid, response = handle_product_creation(user_id, request.data, request.FILES.getlist('media_files'))
+    response = handle_product_creation(user_id, request.data, request.FILES.getlist('media_files'))
     return response
+
+
+@api_view(['POST'])
+@permission_classes([HasValidTokenForUser, IsFarmer])
+def add_product(request):
+    user_id = request.headers.get('user-id')
+    response = handle_product_creation(user_id, request.data, request.FILES.getlist('media_files'))
+    return response
+
+
+
 
 def handle_product_creation(user_id, data, media_files):
     name = data.get('name')
@@ -108,7 +119,7 @@ def handle_product_creation(user_id, data, media_files):
             media_url=media_entries
         )
 
-    return pid, Response({'message': 'Product created successfully', 'product_id': pid}, status=status.HTTP_201_CREATED)
+    return Response({'message': 'Product created successfully'}, status=status.HTTP_201_CREATED)
 
 ##########################################################################################
 #                            Add Product End
@@ -133,7 +144,10 @@ def all_available_categories(request):
 def available_farm_product_on_category(request):
     category = request.data.get('category')
     try:
-        framProduct = FarmProducts.objects.filter(category = category).order_by('id')
+        if category == None or category == "" or category.lower() == "all":
+            framProduct = FarmProducts.objects.filter().order_by('id')
+        else:
+            framProduct = FarmProducts.objects.filter(category__icontains = category).order_by('id')
         data = []
         for p in framProduct:
             data.append({
@@ -144,7 +158,7 @@ def available_farm_product_on_category(request):
             
     except FarmProducts.DoesNotExist:
         return Response({}, status=status.HTTP_404_NOT_FOUND)
-    return Response({"farm_products":data},status=status.HTTP_200_OK)
+    return Response({"category":category,"farm_products":data},status=status.HTTP_200_OK)
 ##########################################################################################
 #                            Check FarmProduct Category End
 ##########################################################################################

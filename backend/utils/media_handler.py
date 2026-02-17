@@ -1,36 +1,50 @@
 import os
 import tempfile
+import mimetypes
+import threading
 import cv2
 from datetime import datetime
 from django.conf import settings
-from django.core.exceptions import ValidationError
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Constants
+# ─────────────────────────────────────────────────────────────────────────────
+
+VIDEO_MAX_DURATION  = 30            # seconds
+VIDEO_MAX_WIDTH     = 1920          # FHD max input
+VIDEO_MAX_HEIGHT    = 1080          # FHD max input
+VIDEO_TARGET_WIDTH  = 1280          # HD 720p output width
+VIDEO_TARGET_HEIGHT = 720           # HD 720p output height
+VIDEO_TARGET_FPS    = 30
+IMAGE_MAX_SIZE_MB   = 5
+IMAGE_SAVE_FORMAT   = '.jpg'        # always save images as JPEG
+IMAGE_JPEG_QUALITY  = 90            # JPEG quality (0–100)
 
 
 class FileManager:
-    """Manages file uploads and operations for users"""
-    
+    """Manages file uploads and operations for users."""
+
     def __init__(self, user_id):
-        """
-        Initialize FileManager for a specific user
-        
-        Args:
-            user_id: User ID for file organization
-        """
-        self.user_id = user_id
+        self.user_id   = user_id
         self.base_path = os.path.join(settings.MEDIA_ROOT, 'Uploaded_Files', str(user_id))
-        self.base_url = f"{settings.MEDIA_URL}Uploaded_Files/{user_id}"
-    
-    
+        self.base_url  = f"{settings.MEDIA_URL}Uploaded_Files/{user_id}"
+
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Public API
+    # ─────────────────────────────────────────────────────────────────────────
+
     def save_profile_file(self, file, file_purpose, allowed_extensions=None, max_size_mb=1):
         """
-        Save profile-related files
-        
+        Save profile-related files (profile picture, ID verification docs).
+
         Args:
             file: Uploaded file object
-            file_purpose: 'profile-pic', 'verification-doc-front', 'verification-doc-back'
-            allowed_extensions: List of allowed extensions
+            file_purpose: 'profile-pic' | 'verification-doc-front' | 'verification-doc-back'
+            allowed_extensions: List of allowed extensions (uses defaults if None)
             max_size_mb: Maximum file size in MB
-        
+
         Returns:
             dict: Result with success status and file info
         """
@@ -39,32 +53,47 @@ class FileManager:
             category='profile',
             file_purpose=file_purpose,
             allowed_extensions=allowed_extensions,
-            max_size_mb=max_size_mb
+            max_size_mb=max_size_mb,
         )
-    
-    
-    def save_product_file(self, file, product_id, file_type, sequence=None, 
-                         allowed_extensions=None, max_size_mb=5):
+
+
+    def save_product_file(self, file, product_id, file_type, sequence=None,
+                          allowed_extensions=None, max_size_mb=None):
         """
-        Save product-related files (images/videos)
-        
+        Save product-related files (images / videos).
+
+        Images  → converted and saved as JPEG, max IMAGE_MAX_SIZE_MB (5 MB).
+        Videos  → validated ≤30s and ≤FHD resolution before saving.
+                  Saved as raw immediately so the API responds fast.
+                  If not already HD MP4, converted in a background daemon
+                  thread using FFmpeg; the raw file is replaced when done.
+
+        Response includes 'converting': True/False.
+        When True, 'final_file_name' / 'final_file_url' show the post-
+        conversion filename the client should eventually use.
+
         Args:
             file: Uploaded file object
             product_id: Product ID
             file_type: 'img' or 'vid'
             sequence: Sequence number (auto-generated if None)
-            allowed_extensions: List of allowed extensions
-            max_size_mb: Maximum file size in MB
-        
+            allowed_extensions: Overrides defaults if provided
+            max_size_mb: Overrides defaults if provided
+
         Returns:
             dict: Result with success status and file info
         """
-        # Validate video duration if it's a video
         if file_type == 'vid':
-            duration_check = self._validate_video_duration(file)
-            if not duration_check['success']:
-                return duration_check
-        
+            check = self._validate_video_properties(file)
+            if not check['success']:
+                return check
+            if max_size_mb is None:
+                max_size_mb = 50  # raw upload ceiling before conversion
+
+        elif file_type == 'img':
+            if max_size_mb is None:
+                max_size_mb = IMAGE_MAX_SIZE_MB
+
         return self._save_file(
             file=file,
             category='product',
@@ -72,506 +101,620 @@ class FileManager:
             product_id=product_id,
             sequence=sequence,
             allowed_extensions=allowed_extensions,
-            max_size_mb=max_size_mb
+            max_size_mb=max_size_mb,
         )
-    
-    
-    def _save_file(self, file, category, file_purpose, product_id=None, 
-                   sequence=None, allowed_extensions=None, max_size_mb=2):
-        """
-        Internal method to save files
-        
-        Args:
-            file: Uploaded file object
-            category: 'profile' or 'product'
-            file_purpose: Type of file
-            product_id: Product ID (required for products)
-            sequence: Sequence number (auto for products)
-            allowed_extensions: List of allowed extensions
-            max_size_mb: Maximum file size in MB
-        
-        Returns:
-            dict: {
-                'success': True/False,
-                'file_path': Absolute file path,
-                'file_url': URL to access file,
-                'file_name': Generated filename,
-                'sequence': Sequence number (for products),
-                'error': Error message (if failed)
-            }
-        """
-        
-        # Validate category
-        if category not in ['profile', 'product']:
-            return {
-                'success': False,
-                'error': 'Category must be "profile" or "product"'
-            }
-        
-        # Validate product requirements
-        if category == 'product' and not product_id:
-            return {
-                'success': False,
-                'error': 'product_id is required for product files'
-            }
-        
-        # Set default allowed extensions
-        if allowed_extensions is None:
-            allowed_extensions = self._get_default_extensions(file_purpose)
-        
-        # Validate file extension
-        validation_result = self._validate_file(file, allowed_extensions, max_size_mb)
-        if not validation_result['success']:
-            return validation_result
-        
-        file_ext = os.path.splitext(file.name)[1].lower()
-        
-        # Create directory structure with proper error handling
-        category_dir = os.path.join(self.base_path, category)
-        
-        try:
-            # Create the directory with exist_ok=True
-            os.makedirs(category_dir, exist_ok=True)
-            
-            # Verify directory was created successfully
-            if not os.path.exists(category_dir):
-                return {
-                    'success': False,
-                    'error': f'Failed to create directory: {category_dir}'
-                }
-            
-            # Check if directory is writable
-            if not os.access(category_dir, os.W_OK):
-                return {
-                    'success': False,
-                    'error': f'Directory not writable: {category_dir}'
-                }
-                
-        except PermissionError as e:
-            return {
-                'success': False,
-                'error': f'Permission denied creating directory: {str(e)}'
-            }
-        except Exception as e:
-            return {
-                'success': False,
-                'error': f'Directory creation failed: {str(e)}'
-            }
-        
-        timestamp = datetime.now().strftime('%m%d%Y-%H%M%S')
-        # Generate filename
-        if category == 'profile':
-            # Generate date string: MMDDYYYY (e.g., 02042026)
-            # Format: MMDDYYYY_HHMMSS (e.g., 02042026_143005)
-            
-            
-            # Construct filename: profile-pic_02042026.png
-            file_name = f"{file_purpose}-{timestamp}{file_ext}"
-            
-            # Optional: Handle the rare case where two uploads happen on the same day
-            # and you don't want to overwrite.
-            counter = 1
-            temp_name = file_name
-            while os.path.exists(os.path.join(category_dir, temp_name)):
-                temp_name = f"{file_purpose}-{timestamp}-{counter}{file_ext}"
-                counter += 1
-            file_name = temp_name
-        else:  # product
-            if sequence is None:
-                sequence = self._get_next_sequence(category_dir, product_id, file_purpose)
-            file_name = f"{product_id}-{file_purpose}-{timestamp}-{sequence:03d}{file_ext}"
-        
-        # Full file path
-        file_path = os.path.join(category_dir, file_name)
-        
-        # Check if file exists (for products)
-        if os.path.exists(file_path) and category == 'product':
-            return {
-                'success': False,
-                'error': f'File already exists: {file_name}'
-            }
-        
-        # Save the file
-        save_result = self._write_file(file, file_path)
-        if not save_result['success']:
-            return save_result
-        
-        # Verify file was actually written
-        if not os.path.exists(file_path):
-            return {
-                'success': False,
-                'error': 'File was not saved successfully'
-            }
-        
-        # Generate URL
-        file_url = f"{self.base_url}/{category}/{file_name}"
-        
-        return {
-            'success': True,
-            'file_path': file_path,
-            'file_url': file_url,
-            'file_name': file_name,
-            'sequence': sequence if category == 'product' else None,
-            'category': category
-        }
-    
-    
-    def _validate_file(self, file, allowed_extensions, max_size_mb):
-        """Validate file extension and size"""
-        
-        # Check if file exists
-        if not file:
-            return {
-                'success': False,
-                'error': 'No file provided'
-            }
-        
-        # Check extension
-        file_ext = os.path.splitext(file.name)[1].lower()
-        if file_ext not in allowed_extensions:
-            return {
-                'success': False,
-                'error': f'Invalid file type. Allowed: {", ".join(allowed_extensions)}'
-            }
-        
-        # Check size
-        max_size_bytes = max_size_mb * 1024 * 1024
-        if file.size > max_size_bytes:
-            return {
-                'success': False,
-                'error': f'File size exceeds {max_size_mb}MB limit'
-            }
-        
-        return {'success': True}
-    
-    
-    def _validate_video_duration(self, file, max_duration=30):
-        """Validate video duration using OpenCV"""
-        tmp_path = None
-        try:
-            # Create temporary file
-            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.name)[1]) as tmp:
-                for chunk in file.chunks():
-                    tmp.write(chunk)
-                tmp_path = tmp.name
-            
-            # Check video duration
-            cap = cv2.VideoCapture(tmp_path)
-            fps = cap.get(cv2.CAP_PROP_FPS)
-            frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-            cap.release()
-            
-            if fps > 0:
-                duration = frame_count / fps
-                if duration > max_duration:
-                    if os.path.exists(tmp_path):
-                        os.unlink(tmp_path)
-                    return {
-                        'success': False,
-                        'error': f'Video duration exceeds {max_duration} seconds'
-                    }
-            
-            # Clean up temp file
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-            
-            # Reset file pointer
-            file.seek(0)
-            return {'success': True}
-            
-        except Exception as e:
-            # Clean up on error
-            if tmp_path and os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-            
-            # Reset file pointer
-            file.seek(0)
-            
-            # Return success since we can't validate (better than blocking uploads)
-            return {'success': True}
-    
-    
-    def _get_default_extensions(self, file_purpose):
-        """Get default allowed extensions based on file purpose"""
-        
-        if file_purpose in ['profile-pic', 'verification-doc-front', 'verification-doc-back', 'img']:
-            return ['.jpg', '.jpeg', '.png', '.webp']
-        elif file_purpose == 'vid':
-            return ['.mp4', '.mov', '.avi', '.mkv', '.webm']
-        else:
-            return ['.jpg', '.jpeg', '.png', '.mp4']
-    
-    
-    def _get_next_sequence(self, directory, product_id, file_purpose):
-        """Get next sequence number for product files"""
-        
-        if not os.path.exists(directory):
-            return 1
-        
-        try:
-            existing_files = os.listdir(directory)
-            prefix = f"{product_id}-{file_purpose}-"
-            
-            max_seq = 0
-            for existing_file in existing_files:
-                if existing_file.startswith(prefix):
-                    try:
-                        # Extract sequence number from filename
-                        seq_str = existing_file.replace(prefix, '').split('.')[0]
-                        seq_num = int(seq_str)
-                        max_seq = max(max_seq, seq_num)
-                    except ValueError:
-                        continue
-            
-            return max_seq + 1
-            
-        except Exception as e:
-            # If we can't read directory, start from 1
-            return 1
-    
-    
-    def _write_file(self, file, file_path):
-        """Write file to disk"""
-        
-        try:
-            with open(file_path, 'wb+') as destination:
-                for chunk in file.chunks():
-                    destination.write(chunk)
-            return {'success': True}
-        except PermissionError as e:
-            return {
-                'success': False,
-                'error': f'Permission denied writing file: {str(e)}'
-            }
-        except IOError as e:
-            return {
-                'success': False,
-                'error': f'IO error writing file: {str(e)}'
-            }
-        except Exception as e:
-            return {
-                'success': False,
-                'error': f'Failed to save file: {str(e)}'
-            }
-    
-    
+
+
     def delete_file(self, category, file_name):
         """
-        Delete a specific file
-        
-        Args:
-            category: 'profile' or 'product'
-            file_name: Name of file to delete
-        
+        Delete a specific file.
+
         Returns:
-            dict: {'success': True/False, 'error': Error message if failed}
+            dict: {'success': bool, 'message'/'error': str}
         """
-        
+        if not self._is_valid_category(category):
+            return {'success': False, 'error': 'Invalid category'}
+
         file_path = os.path.join(self.base_path, category, file_name)
-        
+        if not self._is_safe_path(file_path):
+            return {'success': False, 'error': 'Invalid file path'}
+
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
                 return {'success': True, 'message': 'File deleted successfully'}
-            else:
-                return {'success': False, 'error': 'File not found'}
+            return {'success': False, 'error': 'File not found'}
         except PermissionError as e:
             return {'success': False, 'error': f'Permission denied: {str(e)}'}
         except Exception as e:
             return {'success': False, 'error': str(e)}
-    
-    
+
+
     def delete_product_files(self, product_id):
         """
-        Delete all files for a specific product
-        
-        Args:
-            product_id: Product ID
-        
+        Delete all files for a specific product.
+
         Returns:
-            dict: {'success': True/False, 'deleted_count': int, 'errors': list}
+            dict: {'success': bool, 'partial': bool, 'deleted_count': int, 'errors': list|None}
         """
-        
         product_dir = os.path.join(self.base_path, 'product')
-        
+
         if not os.path.exists(product_dir):
-            return {
-                'success': True,
-                'deleted_count': 0,
-                'message': 'No product directory found'
-            }
-        
+            return {'success': True, 'deleted_count': 0, 'message': 'No product directory found'}
+
         deleted_count = 0
         errors = []
-        
+
         try:
-            files = os.listdir(product_dir)
-            for file_name in files:
+            for file_name in os.listdir(product_dir):
                 if file_name.startswith(f"{product_id}-"):
                     result = self.delete_file('product', file_name)
                     if result['success']:
                         deleted_count += 1
                     else:
                         errors.append(f"{file_name}: {result['error']}")
-            
+
             return {
-                'success': len(errors) == 0,
+                'success'      : len(errors) == 0,
+                'partial'      : deleted_count > 0 and len(errors) > 0,
                 'deleted_count': deleted_count,
-                'errors': errors if errors else None
+                'errors'       : errors if errors else None,
             }
         except Exception as e:
             return {
-                'success': False,
+                'success'      : False,
+                'partial'      : deleted_count > 0,
                 'deleted_count': deleted_count,
-                'errors': [str(e)]
+                'errors'       : [str(e)],
             }
-    
-    
+
+
     def get_file_info(self, category, file_name):
         """
-        Get information about a specific file
-        
-        Args:
-            category: 'profile' or 'product'
-            file_name: Name of the file
-        
+        Get metadata about a specific file.
+
         Returns:
             dict: File information or error
         """
-        
+        if not self._is_valid_category(category):
+            return {'success': False, 'error': 'Invalid category'}
+
         file_path = os.path.join(self.base_path, category, file_name)
-        
+        if not self._is_safe_path(file_path):
+            return {'success': False, 'error': 'Invalid file path'}
+
         if not os.path.exists(file_path):
-            return {
-                'success': False,
-                'error': 'File not found'
-            }
-        
+            return {'success': False, 'error': 'File not found'}
+
         try:
+            mime_type, _ = mimetypes.guess_type(file_path)
             return {
-                'success': True,
+                'success'  : True,
                 'file_name': file_name,
                 'file_path': file_path,
-                'file_url': f"{self.base_url}/{category}/{file_name}",
-                'size': os.path.getsize(file_path),
-                'category': category
+                'file_url' : f"{self.base_url}/{category}/{file_name}",
+                'size'     : os.path.getsize(file_path),
+                'mime_type': mime_type,
+                'category' : category,
             }
         except Exception as e:
-            return {
-                'success': False,
-                'error': f'Error getting file info: {str(e)}'
-            }
-    
-    
+            return {'success': False, 'error': f'Error getting file info: {str(e)}'}
+
+
+    def list_files(self, category=None):
+        """
+        List all files for this user.
+
+        Args:
+            category: Optional 'profile' or 'product' to filter
+
+        Returns:
+            dict: {'success': bool, 'files': list, 'count': int}
+        """
+        if category and not self._is_valid_category(category):
+            return {'success': False, 'error': 'Invalid category'}
+
+        try:
+            files_list = []
+            categories = [category] if category else ['profile', 'product']
+
+            for cat in categories:
+                cat_dir = os.path.join(self.base_path, cat)
+                if not os.path.exists(cat_dir):
+                    continue
+
+                for file_name in os.listdir(cat_dir):
+                    file_path = os.path.join(cat_dir, file_name)
+                    if os.path.isfile(file_path):
+                        mime_type, _ = mimetypes.guess_type(file_path)
+                        files_list.append({
+                            'file_name': file_name,
+                            'category' : cat,
+                            'file_url' : f"{self.base_url}/{cat}/{file_name}",
+                            'size'     : os.path.getsize(file_path),
+                            'mime_type': mime_type,
+                        })
+
+            return {'success': True, 'files': files_list, 'count': len(files_list)}
+        except Exception as e:
+            return {'success': False, 'error': f'Error listing files: {str(e)}'}
+
+
     def verify_setup(self):
         """
-        Verify that the base directory structure can be created
-        Useful for debugging directory creation issues
-        
+        Verify MEDIA_ROOT is accessible and the user base directory can be created.
+
         Returns:
             dict: Status of directory setup
         """
         try:
-            # Check if base MEDIA_ROOT exists
             if not os.path.exists(settings.MEDIA_ROOT):
                 return {
                     'success': False,
-                    'error': f'MEDIA_ROOT does not exist: {settings.MEDIA_ROOT}',
-                    'tip': 'Create MEDIA_ROOT directory or check settings.py'
+                    'error'  : f'MEDIA_ROOT does not exist: {settings.MEDIA_ROOT}',
+                    'tip'    : 'Create MEDIA_ROOT or check settings.py',
                 }
-            
-            # Check if MEDIA_ROOT is writable
             if not os.access(settings.MEDIA_ROOT, os.W_OK):
                 return {
                     'success': False,
-                    'error': f'MEDIA_ROOT is not writable: {settings.MEDIA_ROOT}',
-                    'tip': 'Check directory permissions'
+                    'error'  : f'MEDIA_ROOT is not writable: {settings.MEDIA_ROOT}',
+                    'tip'    : 'Check directory permissions',
                 }
-            
-            # Try to create user directory
+
             os.makedirs(self.base_path, exist_ok=True)
-            
+
             if not os.path.exists(self.base_path):
+                return {'success': False, 'error': f'Failed to create user directory: {self.base_path}'}
+
+            return {
+                'success'   : True,
+                'base_path' : self.base_path,
+                'writable'  : os.access(self.base_path, os.W_OK),
+                'media_root': settings.MEDIA_ROOT,
+                'message'   : 'Directory structure verified successfully',
+            }
+        except PermissionError as e:
+            return {'success': False, 'error': f'Permission error: {str(e)}', 'tip': 'Check folder permissions'}
+        except Exception as e:
+            return {'success': False, 'error': f'Setup verification failed: {str(e)}'}
+
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Internal — save pipeline
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _save_file(self, file, category, file_purpose, product_id=None,
+                   sequence=None, allowed_extensions=None, max_size_mb=2):
+        """Validate, name, process, and persist a file."""
+
+        if not self._is_valid_category(category):
+            return {'success': False, 'error': 'Category must be "profile" or "product"'}
+
+        if category == 'product' and not product_id:
+            return {'success': False, 'error': 'product_id is required for product files'}
+
+        if allowed_extensions is None:
+            allowed_extensions = self._get_default_extensions(file_purpose)
+
+        validation_result = self._validate_file(file, allowed_extensions, max_size_mb)
+        if not validation_result['success']:
+            return validation_result
+
+        category_dir = os.path.join(self.base_path, category)
+
+        try:
+            os.makedirs(category_dir, exist_ok=True)
+            if not os.path.exists(category_dir):
+                return {'success': False, 'error': f'Failed to create directory: {category_dir}'}
+            if not os.access(category_dir, os.W_OK):
+                return {'success': False, 'error': f'Directory not writable: {category_dir}'}
+        except PermissionError as e:
+            return {'success': False, 'error': f'Permission denied creating directory: {str(e)}'}
+        except Exception as e:
+            return {'success': False, 'error': f'Directory creation failed: {str(e)}'}
+
+        timestamp = datetime.now().strftime('%m%d%Y-%H%M%S')
+
+        # Route to specialised processors
+        if file_purpose == 'img':
+            return self._save_image(file, category_dir, product_id, sequence, timestamp)
+
+        if file_purpose == 'vid':
+            return self._save_video(file, category_dir, product_id, sequence, timestamp)
+
+        # Profile / verification files — save as-is
+        file_ext = os.path.splitext(file.name)[1].lower()
+
+        if category == 'profile':
+            file_name = f"{file_purpose}-{timestamp}{file_ext}"
+            counter   = 1
+            temp_name = file_name
+            while os.path.exists(os.path.join(category_dir, temp_name)):
+                temp_name = f"{file_purpose}-{timestamp}-{counter}{file_ext}"
+                counter += 1
+            file_name = temp_name
+            sequence  = None
+        else:
+            if sequence is None:
+                sequence = self._get_next_sequence(category_dir, product_id, file_purpose)
+            file_name = f"{product_id}-{file_purpose}-{timestamp}-{sequence:03d}{file_ext}"
+
+        file_path   = os.path.join(category_dir, file_name)
+        save_result = self._write_file(file, file_path)
+        if not save_result['success']:
+            return save_result
+
+        if not os.path.exists(file_path):
+            return {'success': False, 'error': 'File was not saved successfully'}
+
+        return {
+            'success'  : True,
+            'file_path': file_path,
+            'file_url' : f"{self.base_url}/{category}/{file_name}",
+            'file_name': file_name,
+            'sequence' : sequence,
+            'category' : category,
+        }
+
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Internal — image processing
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _save_image(self, file, category_dir, product_id, sequence, timestamp):
+        """
+        Convert any uploaded image to JPEG and save it.
+        Output format: JPEG (.jpg). Max output size: IMAGE_MAX_SIZE_MB.
+        """
+        tmp_path = None
+        try:
+            ext = os.path.splitext(file.name)[1].lower()
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+                for chunk in file.chunks():
+                    tmp.write(chunk)
+                tmp_path = tmp.name
+
+            img = cv2.imread(tmp_path)
+            if img is None:
+                return {'success': False, 'error': 'Cannot read image — it may be corrupt or unsupported'}
+
+            if sequence is None:
+                sequence = self._get_next_sequence(category_dir, product_id, 'img')
+
+            file_name = f"{product_id}-img-{timestamp}-{sequence:03d}{IMAGE_SAVE_FORMAT}"
+            file_path = os.path.join(category_dir, file_name)
+
+            encode_params = [cv2.IMWRITE_JPEG_QUALITY, IMAGE_JPEG_QUALITY]
+            success, buffer = cv2.imencode(IMAGE_SAVE_FORMAT, img, encode_params)
+            if not success:
+                return {'success': False, 'error': 'Failed to encode image as JPEG'}
+
+            with open(file_path, 'wb') as f:
+                f.write(buffer.tobytes())
+
+            saved_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            if saved_size_mb > IMAGE_MAX_SIZE_MB:
+                os.unlink(file_path)
                 return {
                     'success': False,
-                    'error': f'Failed to create user directory: {self.base_path}'
+                    'error'  : f'Processed image exceeds {IMAGE_MAX_SIZE_MB}MB ({saved_size_mb:.1f}MB)',
                 }
-            
-            # Try to create test subdirectories
-            test_dirs = ['profile', 'product']
-            for test_dir in test_dirs:
-                test_path = os.path.join(self.base_path, test_dir)
-                os.makedirs(test_path, exist_ok=True)
-                if not os.path.exists(test_path):
+
+            return {
+                'success'  : True,
+                'file_path': file_path,
+                'file_url' : f"{self.base_url}/product/{file_name}",
+                'file_name': file_name,
+                'sequence' : sequence,
+                'category' : 'product',
+                'converting': False,
+            }
+
+        except Exception as e:
+            return {'success': False, 'error': f'Image processing failed: {str(e)}'}
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            try:
+                file.seek(0)
+            except Exception:
+                pass
+
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Internal — video processing
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _save_video(self, file, category_dir, product_id, sequence, timestamp):
+        """
+        Save raw video immediately, then convert to HD (1280×720) MP4 in a
+        background daemon thread if needed.
+
+        The thread replaces the raw file with the converted .mp4 on completion
+        and then exits. Because the thread is a daemon, it is automatically
+        killed if the main process shuts down.
+        """
+        import shutil
+
+        ext = os.path.splitext(file.name)[1].lower()
+
+        if sequence is None:
+            sequence = self._get_next_sequence(category_dir, product_id, 'vid')
+
+        # Save raw file first so the API can respond immediately
+        raw_file_name = f"{product_id}-vid-{timestamp}-{sequence:03d}{ext}"
+        raw_file_path = os.path.join(category_dir, raw_file_name)
+
+        save_result = self._write_file(file, raw_file_path)
+        if not save_result['success']:
+            return save_result
+
+        if not os.path.exists(raw_file_path):
+            return {'success': False, 'error': 'Video was not saved successfully'}
+
+        # Final filename is always .mp4
+        final_file_name = f"{product_id}-vid-{timestamp}-{sequence:03d}.mp4"
+        final_file_path = os.path.join(category_dir, final_file_name)
+
+        needs_conversion = self._video_needs_conversion(raw_file_path)
+
+        if not needs_conversion:
+            # Already correct format/resolution — just rename if needed
+            if ext != '.mp4':
+                shutil.move(raw_file_path, final_file_path)
+            else:
+                final_file_path = raw_file_path
+                final_file_name = raw_file_name
+
+            return {
+                'success'   : True,
+                'file_path' : final_file_path,
+                'file_url'  : f"{self.base_url}/product/{final_file_name}",
+                'file_name' : final_file_name,
+                'sequence'  : sequence,
+                'category'  : 'product',
+                'converting': False,
+            }
+
+        # Launch background conversion thread (daemon=True so it dies with the process)
+        thread = threading.Thread(
+            target=self._convert_video_worker,
+            args=(raw_file_path, final_file_path),
+            daemon=True,
+        )
+        thread.start()
+
+        return {
+            'success'        : True,
+            'file_path'      : raw_file_path,
+            'file_url'       : f"{self.base_url}/product/{raw_file_name}",
+            'file_name'      : raw_file_name,
+            'final_file_name': final_file_name,
+            'final_file_url' : f"{self.base_url}/product/{final_file_name}",
+            'sequence'       : sequence,
+            'category'       : 'product',
+            'converting'     : True,
+            'message'        : 'Video saved. Converting to HD MP4 in background.',
+        }
+
+
+    def _video_needs_conversion(self, file_path):
+        """Return True if the video is not already HD MP4."""
+        try:
+            ext    = os.path.splitext(file_path)[1].lower()
+            cap    = cv2.VideoCapture(file_path)
+            width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            cap.release()
+
+            if ext != '.mp4':
+                return True
+            if width > VIDEO_TARGET_WIDTH or height > VIDEO_TARGET_HEIGHT:
+                return True
+            return False
+        except Exception:
+            return True  # Can't determine — attempt conversion
+
+
+    def _convert_video_worker(self, raw_path, output_path):
+        """
+        Background thread: convert video to HD (1280×720) MP4 via FFmpeg.
+
+        On success  → replaces raw file with converted .mp4, then exits.
+        On failure  → logs error, leaves raw file intact, then exits.
+        Thread is a daemon and closes automatically when main process exits.
+        """
+        import subprocess
+        import shutil
+
+        try:
+            if not shutil.which('ffmpeg'):
+                print(f'[VideoConvert] ffmpeg not found. Raw file kept: {raw_path}')
+                return
+
+            tmp_output = output_path + '.tmp.mp4'
+
+            cmd = [
+                'ffmpeg', '-y',
+                '-i', raw_path,
+                # Scale to HD, preserve aspect ratio, pad with black bars if needed
+                '-vf', (
+                    f'scale={VIDEO_TARGET_WIDTH}:{VIDEO_TARGET_HEIGHT}'
+                    f':force_original_aspect_ratio=decrease,'
+                    f'pad={VIDEO_TARGET_WIDTH}:{VIDEO_TARGET_HEIGHT}:(ow-iw)/2:(oh-ih)/2'
+                ),
+                '-c:v', 'libx264',
+                '-preset', 'fast',
+                '-crf', '23',               # Good quality / size balance
+                '-r', str(VIDEO_TARGET_FPS),
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                '-movflags', '+faststart',  # Web-optimised MP4 atom order
+                tmp_output,
+            ]
+
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=300,  # 5-minute hard limit
+            )
+
+            if result.returncode == 0 and os.path.exists(tmp_output):
+                os.replace(tmp_output, output_path)   # Atomic rename
+                if os.path.exists(raw_path) and raw_path != output_path:
+                    os.unlink(raw_path)               # Remove raw file
+                print(f'[VideoConvert] Complete: {output_path}')
+            else:
+                err = result.stderr.decode('utf-8', errors='replace')[-500:]
+                print(f'[VideoConvert] FFmpeg failed ({result.returncode}): {err}')
+                if os.path.exists(tmp_output):
+                    os.unlink(tmp_output)
+
+        except subprocess.TimeoutExpired:
+            print(f'[VideoConvert] Timeout converting: {raw_path}')
+        except Exception as e:
+            print(f'[VideoConvert] Unexpected error: {e}')
+
+        # Thread exits here — daemon thread is automatically reaped by Python
+
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Internal — validation
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _validate_video_properties(self, file):
+        """
+        Validate video duration (≤30s) and resolution (≤FHD 1920×1080).
+        Always resets the file pointer via finally block.
+        """
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.name)[1]) as tmp:
+                for chunk in file.chunks():
+                    tmp.write(chunk)
+                tmp_path = tmp.name
+
+            cap         = cv2.VideoCapture(tmp_path)
+            fps         = cap.get(cv2.CAP_PROP_FPS)
+            frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+            width       = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height      = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            cap.release()
+
+            if fps > 0:
+                duration = frame_count / fps
+                if duration > VIDEO_MAX_DURATION:
                     return {
                         'success': False,
-                        'error': f'Failed to create {test_dir} directory: {test_path}'
+                        'error'  : f'Video is {duration:.1f}s — maximum allowed is {VIDEO_MAX_DURATION}s.',
                     }
-            
+
+            if width > VIDEO_MAX_WIDTH or height > VIDEO_MAX_HEIGHT:
+                return {
+                    'success': False,
+                    'error'  : (
+                        f'Video resolution {width}×{height} exceeds the '
+                        f'{VIDEO_MAX_WIDTH}×{VIDEO_MAX_HEIGHT} (FHD) maximum.'
+                    ),
+                }
+
             return {
-                'success': True,
-                'base_path': self.base_path,
-                'writable': os.access(self.base_path, os.W_OK),
-                'media_root': settings.MEDIA_ROOT,
-                'message': 'Directory structure verified successfully'
+                'success' : True,
+                'duration': round(frame_count / fps, 2) if fps > 0 else None,
+                'width'   : width,
+                'height'  : height,
             }
-            
-        except PermissionError as e:
+
+        except Exception:
+            return {'success': True}  # Can't validate — allow upload
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            try:
+                file.seek(0)
+            except Exception:
+                pass
+
+
+    def _validate_file(self, file, allowed_extensions, max_size_mb):
+        """Validate file presence, extension, and size."""
+        if not file:
+            return {'success': False, 'error': 'No file provided'}
+
+        file_ext = os.path.splitext(file.name)[1].lower()
+        if file_ext not in allowed_extensions:
             return {
                 'success': False,
-                'error': f'Permission error: {str(e)}',
-                'tip': 'Check folder permissions on the server'
+                'error'  : f'Invalid file type. Allowed: {", ".join(allowed_extensions)}',
             }
-        except Exception as e:
-            return {
-                'success': False,
-                'error': f'Setup verification failed: {str(e)}'
-            }
-    
-    
-    def list_files(self, category=None):
+
+        if file.size > max_size_mb * 1024 * 1024:
+            return {'success': False, 'error': f'File size exceeds {max_size_mb}MB limit'}
+
+        return {'success': True}
+
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Internal — utilities
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _get_default_extensions(self, file_purpose):
+        if file_purpose in ['profile-pic', 'verification-doc-front', 'verification-doc-back', 'img']:
+            return ['.jpg', '.jpeg', '.png', '.webp']
+        if file_purpose == 'vid':
+            return ['.mp4', '.mov', '.avi', '.mkv', '.webm']
+        return ['.jpg', '.jpeg', '.png', '.mp4']
+
+
+    def _get_next_sequence(self, directory, product_id, file_purpose):
         """
-        List all files for this user
-        
-        Args:
-            category: Optional - 'profile' or 'product' to filter
-        
-        Returns:
-            dict: List of files with their info
+        Determine next sequence number for product files.
+        Filename format: {product_id}-{file_purpose}-{timestamp}-{seq:03d}{ext}
         """
+        if not os.path.exists(directory):
+            return 1
+
+        prefix  = f"{product_id}-{file_purpose}-"
+        max_seq = 0
+
         try:
-            files_list = []
-            
-            if category:
-                categories = [category]
-            else:
-                categories = ['profile', 'product']
-            
-            for cat in categories:
-                cat_dir = os.path.join(self.base_path, cat)
-                
-                if not os.path.exists(cat_dir):
+            for existing_file in os.listdir(directory):
+                if not existing_file.startswith(prefix):
                     continue
-                
-                for file_name in os.listdir(cat_dir):
-                    file_path = os.path.join(cat_dir, file_name)
-                    
-                    if os.path.isfile(file_path):
-                        files_list.append({
-                            'file_name': file_name,
-                            'category': cat,
-                            'file_url': f"{self.base_url}/{cat}/{file_name}",
-                            'size': os.path.getsize(file_path)
-                        })
-            
-            return {
-                'success': True,
-                'files': files_list,
-                'count': len(files_list)
-            }
-            
+                try:
+                    remainder = existing_file[len(prefix):]    # '{timestamp}-{seq:03d}{ext}'
+                    seq_part  = remainder.rsplit('-', 1)[-1]   # '{seq:03d}{ext}'
+                    seq_str   = os.path.splitext(seq_part)[0]  # '{seq:03d}'
+                    seq_num   = int(seq_str)
+                    max_seq   = max(max_seq, seq_num)
+                except (ValueError, IndexError):
+                    continue
+        except Exception:
+            return 1
+
+        return max_seq + 1
+
+
+    def _write_file(self, file, file_path):
+        """Write an uploaded file to disk chunk by chunk."""
+        try:
+            with open(file_path, 'wb+') as destination:
+                for chunk in file.chunks():
+                    destination.write(chunk)
+            return {'success': True}
+        except PermissionError as e:
+            return {'success': False, 'error': f'Permission denied writing file: {str(e)}'}
+        except IOError as e:
+            return {'success': False, 'error': f'IO error writing file: {str(e)}'}
         except Exception as e:
-            return {
-                'success': False,
-                'error': f'Error listing files: {str(e)}'
-            }
+            return {'success': False, 'error': f'Failed to save file: {str(e)}'}
+
+
+    def _is_valid_category(self, category):
+        return category in ['profile', 'product']
+
+
+    def _is_safe_path(self, file_path):
+        """Ensure the resolved path stays within the user's base directory."""
+        return os.path.realpath(file_path).startswith(os.path.realpath(self.base_path))

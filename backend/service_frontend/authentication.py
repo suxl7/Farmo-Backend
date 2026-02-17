@@ -331,7 +331,8 @@ def forget_password_verify_email(request):
         otp=otp,
         otp_type='FORGET_PASSWORD',
         created_at=timezone.now(),
-        expires_in=10
+        expires_in=5,
+        description=None
     )
     return Response({'verification': "True"}, status=status.HTTP_200_OK)
 

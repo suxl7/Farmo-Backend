@@ -434,34 +434,7 @@ def get_user_profile_data(user):
         dict: Dictionary containing user profile data and base64 encoded image
     """
     profile = user.profile_id
-    profile_url = f"{settings.MEDIA_ROOT}{profile.profile_url}"
-    
-    
-    # Use default profile picture if none exists
-    if not profile.profile_url:
-        if profile.user_type.lower() in ['verifiedfarmer', 'farmer']:
-            profile_url = 'backend\static\DefaultProfilePicture\pp-farmer.png'
 
-        elif profile.user_type.lower() in ['verifiedconsumer','consumer']:
-            profile_url = 'backend\static\DefaultProfilePicture\pp-consumer.png'
-        elif profile.user_type.lower() == 'admin':
-            profile_url = 'backend\static\DefaultProfilePicture\pp-admin.png'
-        elif profile.user_type.lower() == 'superadmin':
-            profile_url = 'backend\static\DefaultProfilePicture\pp-superadmin.png'
-        else:
-            profile_url = 'backend\static\DefaultProfilePicture\pp-guest.png'
-
-    # Encode profile picture to base64
-    try:
-        with open(profile_url, 'rb') as image_file:
-            encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
-        
-        mime_type, _ = mimetypes.guess_type(profile_url)
-    except FileNotFoundError:
-        with open('backend\static\DefaultProfilePicture\pp-guest.png', 'rb') as image_file:
-            encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
-        mime_type = 'image/png'
-    
     return {
         'user_id': user.user_id,
         'full_name': profile.get_Full_Name,
@@ -476,8 +449,7 @@ def get_user_profile_data(user):
         'about': profile.about,
         'dob': profile.dob,
         'sex': profile.sex,
-        'profile_picture': encoded_image,
-        'pp_mime_type': mime_type or 'image/png',
+        'profile_picture_otp': "",
     }
 
 
