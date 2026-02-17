@@ -87,7 +87,7 @@ def big_file_upload(request):
         Returns: { message }
     """
 
-    userid = request.headers.get('user-id') or request.data.get('user_id')
+    userid = request.data.get('user_id') if request.data.get('user_id') else request.headers.get('user-id')
     action = request.data.get('action')
 
     if not userid:
@@ -138,16 +138,24 @@ def _upload_init(request, userid):
         if file_size <= 0 or total_chunks <= 0:
             raise ValueError
     except (TypeError, ValueError):
-        return Response({'error': 'file_size and total_chunks must be positive integers'}, status=400)
+        return Response({'error': 'file_size and total_chunks must be positive integers'}, status=status.HTTP_400_BAD_REQUEST)
 
     if subject == 'PRODUCT_MEDIA' and not product_id:
-        return Response({'error': 'product_id is required for PRODUCT_MEDIA'}, status=400)
+        return Response({'error': 'product_id is required for PRODUCT_MEDIA'}, status=status.HTTP_400_BAD_REQUEST)
 
     # ── Determine size limits ────────────────────────────────────────────────
     ext = os.path.splitext(file_name)[1].lower()
-    max_size_mb = 50 if ext in ['.mp4', '.mov', '.avi', '.mkv', '.webm'] else 10
-
-    if file_size > max_size_mb * 1024 * 1024:
+    VIDEO_EXTS = ['.mp4', '.mov', '.avi', '.mkv', '.webm']
+    IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff', '.gif']
+    
+    if ext in VIDEO_EXTS:
+        max_size_mb = 200       # FHD video, any size
+    elif ext in IMAGE_EXTS:
+        max_size_mb = None      # no limit — FileManager compresses to 2–5 MB on save
+    else:
+        max_size_mb = 10        # PDFs, docs, etc.
+    
+    if max_size_mb and file_size > max_size_mb * 1024 * 1024:
         return Response({'error': f'File too large. Max size: {max_size_mb}MB'}, status=400)
 
     # ── Create temp directory for chunks ────────────────────────────────────
@@ -441,12 +449,14 @@ def profile_pic_download(userid):
     try:
         user = Users.objects.get(user_id=userid, profile_status='ACTIVATED')
         profile = user.profile_id
+        
     except Users.DoesNotExist:
         return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 1, 'seq': 1}
 
     # Determine the profile picture path
     if profile.profile_url:
-        profile_url = os.path.join(settings.MEDIA_ROOT, profile.profile_url)
+        profile_url = settings.MEDIA_ROOT + '/' + profile.profile_url
+        
     else:
         user_type = profile.user_type.lower()
         default_map = {
@@ -465,12 +475,16 @@ def profile_pic_download(userid):
         with open(profile_url, 'rb') as image_file:
             encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
         mime_type, _ = mimetypes.guess_type(profile_url)
+        
     except FileNotFoundError:
+
         fallback = 'backend/static/DefaultProfilePicture/pp-guest.png'
+        
         with open(fallback, 'rb') as image_file:
             encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
         mime_type = 'image/png'
 
+    
     return {
         'file': encoded_image,
         'mime_type': mime_type,

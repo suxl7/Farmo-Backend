@@ -11,15 +11,20 @@ from django.conf import settings
 # Constants
 # ─────────────────────────────────────────────────────────────────────────────
 
-VIDEO_MAX_DURATION  = 30            # seconds
-VIDEO_MAX_WIDTH     = 1920          # FHD max input
-VIDEO_MAX_HEIGHT    = 1080          # FHD max input
+VIDEO_MAX_DURATION  = 30            # seconds — input limit
+VIDEO_MAX_WIDTH     = 1920          # FHD max input resolution
+VIDEO_MAX_HEIGHT    = 1080          # FHD max input resolution
 VIDEO_TARGET_WIDTH  = 1280          # HD 720p output width
 VIDEO_TARGET_HEIGHT = 720           # HD 720p output height
 VIDEO_TARGET_FPS    = 30
-IMAGE_MAX_SIZE_MB   = 5
-IMAGE_SAVE_FORMAT   = '.jpg'        # always save images as JPEG
-IMAGE_JPEG_QUALITY  = 90            # JPEG quality (0–100)
+
+IMAGE_SAVE_FORMAT        = '.jpg'   # all images stored as JPEG
+IMAGE_TARGET_MIN_MB      = 2.0     # compressed floor — small images stay above this
+IMAGE_TARGET_MAX_MB      = 5.0     # compressed ceiling
+IMAGE_LARGE_PREFER_MB    = 5.0     # for inputs >10 MB, binary-search aims at this target
+IMAGE_LARGE_THRESHOLD_MB = 10.0    # input size above which we prefer the upper bound
+IMAGE_QUALITY_MAX        = 95      # JPEG quality upper bound
+IMAGE_QUALITY_MIN        = 10      # JPEG quality lower bound — stop trying below this
 
 
 class FileManager:
@@ -35,19 +40,15 @@ class FileManager:
     # Public API
     # ─────────────────────────────────────────────────────────────────────────
 
-    def save_profile_file(self, file, file_purpose, allowed_extensions=None, max_size_mb=1):
-        """
-        Save profile-related files (profile picture, ID verification docs).
+    def save_profile_file(self, file, file_purpose, allowed_extensions=None, max_size_mb=None):
+        IMAGE_PURPOSES = ['profile-pic', 'verification-doc-front', 'verification-doc-back']
+    
+        # Images have no raw size limit — compressed to 2–5 MB on save
+        if max_size_mb is None and file_purpose in IMAGE_PURPOSES:
+            max_size_mb = None   # explicit — no limit
+        elif max_size_mb is None:
+            max_size_mb = 10     # non-image profile files (e.g. PDFs)
 
-        Args:
-            file: Uploaded file object
-            file_purpose: 'profile-pic' | 'verification-doc-front' | 'verification-doc-back'
-            allowed_extensions: List of allowed extensions (uses defaults if None)
-            max_size_mb: Maximum file size in MB
-
-        Returns:
-            dict: Result with success status and file info
-        """
         return self._save_file(
             file=file,
             category='profile',
@@ -62,23 +63,23 @@ class FileManager:
         """
         Save product-related files (images / videos).
 
-        Images  → converted and saved as JPEG, max IMAGE_MAX_SIZE_MB (5 MB).
+        Images  → accepted at ANY size/format, converted and stored as JPEG
+                  in the 2–4 MB range via adaptive quality search.
+
         Videos  → validated ≤30s and ≤FHD resolution before saving.
                   Saved as raw immediately so the API responds fast.
-                  If not already HD MP4, converted in a background daemon
-                  thread using FFmpeg; the raw file is replaced when done.
+                  Converted to 720p MP4 in a background daemon thread;
+                  raw file is replaced when done.
 
         Response includes 'converting': True/False.
-        When True, 'final_file_name' / 'final_file_url' show the post-
-        conversion filename the client should eventually use.
 
         Args:
-            file: Uploaded file object
-            product_id: Product ID
-            file_type: 'img' or 'vid'
-            sequence: Sequence number (auto-generated if None)
+            file              : Uploaded file object
+            product_id        : Product ID
+            file_type         : 'img' or 'vid'
+            sequence          : Sequence number (auto-generated if None)
             allowed_extensions: Overrides defaults if provided
-            max_size_mb: Overrides defaults if provided
+            max_size_mb       : Raw upload ceiling (no limit for img; 200 MB for vid)
 
         Returns:
             dict: Result with success status and file info
@@ -88,11 +89,11 @@ class FileManager:
             if not check['success']:
                 return check
             if max_size_mb is None:
-                max_size_mb = 50  # raw upload ceiling before conversion
+                max_size_mb = 200   # accept any FHD file before conversion
 
         elif file_type == 'img':
-            if max_size_mb is None:
-                max_size_mb = IMAGE_MAX_SIZE_MB
+            # No raw upload size limit — we will compress on the way out
+            max_size_mb = 9999
 
         return self._save_file(
             file=file,
@@ -170,12 +171,7 @@ class FileManager:
 
 
     def get_file_info(self, category, file_name):
-        """
-        Get metadata about a specific file.
-
-        Returns:
-            dict: File information or error
-        """
+        """Get metadata about a specific file."""
         if not self._is_valid_category(category):
             return {'success': False, 'error': 'Invalid category'}
 
@@ -202,15 +198,7 @@ class FileManager:
 
 
     def list_files(self, category=None):
-        """
-        List all files for this user.
-
-        Args:
-            category: Optional 'profile' or 'product' to filter
-
-        Returns:
-            dict: {'success': bool, 'files': list, 'count': int}
-        """
+        """List all files for this user."""
         if category and not self._is_valid_category(category):
             return {'success': False, 'error': 'Invalid category'}
 
@@ -241,12 +229,7 @@ class FileManager:
 
 
     def verify_setup(self):
-        """
-        Verify MEDIA_ROOT is accessible and the user base directory can be created.
-
-        Returns:
-            dict: Status of directory setup
-        """
+        """Verify MEDIA_ROOT is accessible and user base directory can be created."""
         try:
             if not os.path.exists(settings.MEDIA_ROOT):
                 return {
@@ -284,8 +267,7 @@ class FileManager:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _save_file(self, file, category, file_purpose, product_id=None,
-                   sequence=None, allowed_extensions=None, max_size_mb=2):
-        """Validate, name, process, and persist a file."""
+                   sequence=None, allowed_extensions=None, max_size_mb=9999):
 
         if not self._is_valid_category(category):
             return {'success': False, 'error': 'Category must be "profile" or "product"'}
@@ -322,9 +304,16 @@ class FileManager:
         if file_purpose == 'vid':
             return self._save_video(file, category_dir, product_id, sequence, timestamp)
 
-        # Profile / verification files — save as-is
+        # ── Profile / verification files ─────────────────────────────────────
+        # Profile pictures and verification docs are also converted to JPEG
+        # so the storage format is consistent across all image types.
         file_ext = os.path.splitext(file.name)[1].lower()
+        is_image = file_ext in ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff', '.gif']
 
+        if is_image:
+            return self._save_profile_image(file, category_dir, file_purpose, timestamp)
+
+        # Non-image profile file (e.g. PDF verification doc) — save as-is
         if category == 'profile':
             file_name = f"{file_purpose}-{timestamp}{file_ext}"
             counter   = 1
@@ -333,7 +322,6 @@ class FileManager:
                 temp_name = f"{file_purpose}-{timestamp}-{counter}{file_ext}"
                 counter += 1
             file_name = temp_name
-            sequence  = None
         else:
             if sequence is None:
                 sequence = self._get_next_sequence(category_dir, product_id, file_purpose)
@@ -343,9 +331,6 @@ class FileManager:
         save_result = self._write_file(file, file_path)
         if not save_result['success']:
             return save_result
-
-        if not os.path.exists(file_path):
-            return {'success': False, 'error': 'File was not saved successfully'}
 
         return {
             'success'  : True,
@@ -361,10 +346,75 @@ class FileManager:
     # Internal — image processing
     # ─────────────────────────────────────────────────────────────────────────
 
+    def _compress_image_to_target(self, img, input_size_bytes=0):
+        """
+        Binary-search JPEG quality to land encoded size in 2–5 MB band.
+
+        Rules:
+          • Input ≤ 10 MB  → aim for midpoint ~3.5 MB
+          • Input >  10 MB → prefer upper end, close to 5 MB
+          • Naturally tiny (< 2 MB at q=95) → keep at q=95
+          • Unstoppably large (> 5 MB at q=10) → use q=10
+
+        Strategy:
+          • Start at quality 85 — a good midpoint.
+          • Binary-search between IMAGE_QUALITY_MIN and IMAGE_QUALITY_MAX.
+          • Accept the first quality whose encoded size falls in [min, max].
+          • If the image is naturally small (< min) even at quality max,
+            store it at quality max (no upscaling).
+          • If the image is enormous even at quality min, store at quality min
+            (the best we can do without destroying the image).
+
+        Returns:
+            bytes: The final JPEG-encoded buffer.
+        """
+        min_bytes = int(IMAGE_TARGET_MIN_MB * 1024 * 1024)
+        max_bytes = int(IMAGE_TARGET_MAX_MB * 1024 * 1024)
+
+        lo      = IMAGE_QUALITY_MIN
+        hi      = IMAGE_QUALITY_MAX
+        best_buf = None
+
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            ok, buf = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, mid])
+            if not ok:
+                break
+
+            size = len(buf)
+
+            if min_bytes <= size <= max_bytes:
+                # Perfect — inside the target band
+                return buf.tobytes()
+
+            # Save this attempt as the best so far (closest to target)
+            if best_buf is None:
+                best_buf = buf
+            else:
+                prev_size = len(best_buf)
+                # Prefer being inside the band; otherwise prefer closer to midpoint
+                target_mid = (min_bytes + max_bytes) // 2
+                if abs(size - target_mid) < abs(prev_size - target_mid):
+                    best_buf = buf
+
+            if size > max_bytes:
+                hi = mid - 1   # Too big → lower quality
+            else:
+                lo = mid + 1   # Too small → raise quality
+
+        # Return best approximation found
+        if best_buf is not None:
+            return best_buf.tobytes()
+
+        # Last resort fallback
+        _, buf = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        return buf.tobytes()
+
+
     def _save_image(self, file, category_dir, product_id, sequence, timestamp):
         """
-        Convert any uploaded image to JPEG and save it.
-        Output format: JPEG (.jpg). Max output size: IMAGE_MAX_SIZE_MB.
+        Convert ANY uploaded image to JPEG, compressed to 2–4 MB.
+        No input size limit — accepts all formats and resolutions.
         """
         tmp_path = None
         try:
@@ -376,7 +426,7 @@ class FileManager:
 
             img = cv2.imread(tmp_path)
             if img is None:
-                return {'success': False, 'error': 'Cannot read image — it may be corrupt or unsupported'}
+                return {'success': False, 'error': 'Cannot read image — corrupt or unsupported format'}
 
             if sequence is None:
                 sequence = self._get_next_sequence(category_dir, product_id, 'img')
@@ -384,34 +434,78 @@ class FileManager:
             file_name = f"{product_id}-img-{timestamp}-{sequence:03d}{IMAGE_SAVE_FORMAT}"
             file_path = os.path.join(category_dir, file_name)
 
-            encode_params = [cv2.IMWRITE_JPEG_QUALITY, IMAGE_JPEG_QUALITY]
-            success, buffer = cv2.imencode(IMAGE_SAVE_FORMAT, img, encode_params)
-            if not success:
-                return {'success': False, 'error': 'Failed to encode image as JPEG'}
+            jpeg_bytes = self._compress_image_to_target(img)
 
             with open(file_path, 'wb') as f:
-                f.write(buffer.tobytes())
+                f.write(jpeg_bytes)
 
-            saved_size_mb = os.path.getsize(file_path) / (1024 * 1024)
-            if saved_size_mb > IMAGE_MAX_SIZE_MB:
-                os.unlink(file_path)
-                return {
-                    'success': False,
-                    'error'  : f'Processed image exceeds {IMAGE_MAX_SIZE_MB}MB ({saved_size_mb:.1f}MB)',
-                }
+            final_size_mb = os.path.getsize(file_path) / (1024 * 1024)
 
             return {
-                'success'  : True,
-                'file_path': file_path,
-                'file_url' : f"{self.base_url}/product/{file_name}",
-                'file_name': file_name,
-                'sequence' : sequence,
-                'category' : 'product',
+                'success'   : True,
+                'file_path' : file_path,
+                'file_url'  : f"{self.base_url}/product/{file_name}",
+                'file_name' : file_name,
+                'sequence'  : sequence,
+                'category'  : 'product',
+                'size_mb'   : round(final_size_mb, 2),
                 'converting': False,
             }
 
         except Exception as e:
             return {'success': False, 'error': f'Image processing failed: {str(e)}'}
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            try:
+                file.seek(0)
+            except Exception:
+                pass
+
+
+    def _save_profile_image(self, file, category_dir, file_purpose, timestamp):
+        """
+        Convert a profile picture or verification doc image to JPEG.
+        Same compression pipeline as product images (2–4 MB target).
+        """
+        tmp_path = None
+        try:
+            ext = os.path.splitext(file.name)[1].lower()
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+                for chunk in file.chunks():
+                    tmp.write(chunk)
+                tmp_path = tmp.name
+
+            img = cv2.imread(tmp_path)
+            if img is None:
+                return {'success': False, 'error': 'Cannot read image — corrupt or unsupported format'}
+
+            file_name = f"{file_purpose}-{timestamp}{IMAGE_SAVE_FORMAT}"
+            counter   = 1
+            while os.path.exists(os.path.join(category_dir, file_name)):
+                file_name = f"{file_purpose}-{timestamp}-{counter}{IMAGE_SAVE_FORMAT}"
+                counter += 1
+
+            file_path  = os.path.join(category_dir, file_name)
+            jpeg_bytes = self._compress_image_to_target(img)
+
+            with open(file_path, 'wb') as f:
+                f.write(jpeg_bytes)
+
+            final_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+
+            return {
+                'success'   : True,
+                'file_path' : file_path,
+                'file_url'  : f"{self.base_url}/profile/{file_name}",
+                'file_name' : file_name,
+                'sequence'  : None,
+                'category'  : 'profile',
+                'size_mb'   : round(final_size_mb, 2),
+            }
+
+        except Exception as e:
+            return {'success': False, 'error': f'Profile image processing failed: {str(e)}'}
         finally:
             if tmp_path and os.path.exists(tmp_path):
                 os.unlink(tmp_path)
@@ -427,12 +521,12 @@ class FileManager:
 
     def _save_video(self, file, category_dir, product_id, sequence, timestamp):
         """
-        Save raw video immediately, then convert to HD (1280×720) MP4 in a
-        background daemon thread if needed.
+        Save raw video immediately (fast API response), then convert to
+        720p MP4 in a background daemon thread.
 
-        The thread replaces the raw file with the converted .mp4 on completion
-        and then exits. Because the thread is a daemon, it is automatically
-        killed if the main process shuts down.
+        Input accepted  : any format, any size, up to FHD (1920×1080), ≤30s
+        Output stored   : 1280×720 MP4 (H.264 + AAC), aspect-ratio preserved
+                          with black letterbox/pillarbox padding if needed.
         """
         import shutil
 
@@ -441,7 +535,7 @@ class FileManager:
         if sequence is None:
             sequence = self._get_next_sequence(category_dir, product_id, 'vid')
 
-        # Save raw file first so the API can respond immediately
+        # Save raw file immediately so the API can respond fast
         raw_file_name = f"{product_id}-vid-{timestamp}-{sequence:03d}{ext}"
         raw_file_path = os.path.join(category_dir, raw_file_name)
 
@@ -459,7 +553,7 @@ class FileManager:
         needs_conversion = self._video_needs_conversion(raw_file_path)
 
         if not needs_conversion:
-            # Already correct format/resolution — just rename if needed
+            # Already correct format and resolution — just rename if needed
             if ext != '.mp4':
                 shutil.move(raw_file_path, final_file_path)
             else:
@@ -476,7 +570,7 @@ class FileManager:
                 'converting': False,
             }
 
-        # Launch background conversion thread (daemon=True so it dies with the process)
+        # Launch background conversion (daemon thread — auto-killed with process)
         thread = threading.Thread(
             target=self._convert_video_worker,
             args=(raw_file_path, final_file_path),
@@ -494,12 +588,12 @@ class FileManager:
             'sequence'       : sequence,
             'category'       : 'product',
             'converting'     : True,
-            'message'        : 'Video saved. Converting to HD MP4 in background.',
+            'message'        : 'Video saved. Converting to 720p MP4 in background.',
         }
 
 
     def _video_needs_conversion(self, file_path):
-        """Return True if the video is not already HD MP4."""
+        """Return True if the video is not already 720p MP4."""
         try:
             ext    = os.path.splitext(file_path)[1].lower()
             cap    = cv2.VideoCapture(file_path)
@@ -513,16 +607,17 @@ class FileManager:
                 return True
             return False
         except Exception:
-            return True  # Can't determine — attempt conversion
+            return True  # Can't determine — attempt conversion to be safe
 
 
     def _convert_video_worker(self, raw_path, output_path):
         """
-        Background thread: convert video to HD (1280×720) MP4 via FFmpeg.
+        Background thread: convert to 720p MP4 via FFmpeg.
 
-        On success  → replaces raw file with converted .mp4, then exits.
-        On failure  → logs error, leaves raw file intact, then exits.
-        Thread is a daemon and closes automatically when main process exits.
+        • Scale to 1280×720, preserve aspect ratio
+        • Pad with black bars if needed (letterbox / pillarbox)
+        • H.264 + AAC, CRF 23, faststart for web delivery
+        • Replaces raw file on success; leaves raw intact on failure
         """
         import subprocess
         import shutil
@@ -537,7 +632,6 @@ class FileManager:
             cmd = [
                 'ffmpeg', '-y',
                 '-i', raw_path,
-                # Scale to HD, preserve aspect ratio, pad with black bars if needed
                 '-vf', (
                     f'scale={VIDEO_TARGET_WIDTH}:{VIDEO_TARGET_HEIGHT}'
                     f':force_original_aspect_ratio=decrease,'
@@ -545,11 +639,11 @@ class FileManager:
                 ),
                 '-c:v', 'libx264',
                 '-preset', 'fast',
-                '-crf', '23',               # Good quality / size balance
+                '-crf', '23',
                 '-r', str(VIDEO_TARGET_FPS),
                 '-c:a', 'aac',
                 '-b:a', '128k',
-                '-movflags', '+faststart',  # Web-optimised MP4 atom order
+                '-movflags', '+faststart',
                 tmp_output,
             ]
 
@@ -557,14 +651,14 @@ class FileManager:
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                timeout=300,  # 5-minute hard limit
+                timeout=300,
             )
 
             if result.returncode == 0 and os.path.exists(tmp_output):
-                os.replace(tmp_output, output_path)   # Atomic rename
+                os.replace(tmp_output, output_path)
                 if os.path.exists(raw_path) and raw_path != output_path:
-                    os.unlink(raw_path)               # Remove raw file
-                print(f'[VideoConvert] Complete: {output_path}')
+                    os.unlink(raw_path)
+                print(f'[VideoConvert] Done: {output_path}')
             else:
                 err = result.stderr.decode('utf-8', errors='replace')[-500:]
                 print(f'[VideoConvert] FFmpeg failed ({result.returncode}): {err}')
@@ -572,11 +666,9 @@ class FileManager:
                     os.unlink(tmp_output)
 
         except subprocess.TimeoutExpired:
-            print(f'[VideoConvert] Timeout converting: {raw_path}')
+            print(f'[VideoConvert] Timeout: {raw_path}')
         except Exception as e:
             print(f'[VideoConvert] Unexpected error: {e}')
-
-        # Thread exits here — daemon thread is automatically reaped by Python
 
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -585,8 +677,10 @@ class FileManager:
 
     def _validate_video_properties(self, file):
         """
-        Validate video duration (≤30s) and resolution (≤FHD 1920×1080).
-        Always resets the file pointer via finally block.
+        Validate video:
+          • Duration  ≤ VIDEO_MAX_DURATION (30 s)
+          • Resolution ≤ VIDEO_MAX_WIDTH × VIDEO_MAX_HEIGHT (1920 × 1080 FHD)
+        Always resets the file pointer in the finally block.
         """
         tmp_path = None
         try:
@@ -607,7 +701,10 @@ class FileManager:
                 if duration > VIDEO_MAX_DURATION:
                     return {
                         'success': False,
-                        'error'  : f'Video is {duration:.1f}s — maximum allowed is {VIDEO_MAX_DURATION}s.',
+                        'error'  : (
+                            f'Video is {duration:.1f}s — '
+                            f'maximum allowed is {VIDEO_MAX_DURATION}s.'
+                        ),
                     }
 
             if width > VIDEO_MAX_WIDTH or height > VIDEO_MAX_HEIGHT:
@@ -638,7 +735,7 @@ class FileManager:
 
 
     def _validate_file(self, file, allowed_extensions, max_size_mb):
-        """Validate file presence, extension, and size."""
+        """Validate file presence, extension, and raw upload size."""
         if not file:
             return {'success': False, 'error': 'No file provided'}
 
@@ -649,7 +746,7 @@ class FileManager:
                 'error'  : f'Invalid file type. Allowed: {", ".join(allowed_extensions)}',
             }
 
-        if file.size > max_size_mb * 1024 * 1024:
+        if max_size_mb < 9999 and file.size > max_size_mb * 1024 * 1024:
             return {'success': False, 'error': f'File size exceeds {max_size_mb}MB limit'}
 
         return {'success': True}
@@ -661,17 +758,15 @@ class FileManager:
 
     def _get_default_extensions(self, file_purpose):
         if file_purpose in ['profile-pic', 'verification-doc-front', 'verification-doc-back', 'img']:
-            return ['.jpg', '.jpeg', '.png', '.webp']
+            # Accept all common image formats — all will be converted to JPEG
+            return ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff', '.gif']
         if file_purpose == 'vid':
             return ['.mp4', '.mov', '.avi', '.mkv', '.webm']
         return ['.jpg', '.jpeg', '.png', '.mp4']
 
 
     def _get_next_sequence(self, directory, product_id, file_purpose):
-        """
-        Determine next sequence number for product files.
-        Filename format: {product_id}-{file_purpose}-{timestamp}-{seq:03d}{ext}
-        """
+        """Determine next sequence number for product files."""
         if not os.path.exists(directory):
             return 1
 
@@ -683,9 +778,9 @@ class FileManager:
                 if not existing_file.startswith(prefix):
                     continue
                 try:
-                    remainder = existing_file[len(prefix):]    # '{timestamp}-{seq:03d}{ext}'
-                    seq_part  = remainder.rsplit('-', 1)[-1]   # '{seq:03d}{ext}'
-                    seq_str   = os.path.splitext(seq_part)[0]  # '{seq:03d}'
+                    remainder = existing_file[len(prefix):]
+                    seq_part  = remainder.rsplit('-', 1)[-1]
+                    seq_str   = os.path.splitext(seq_part)[0]
                     seq_num   = int(seq_str)
                     max_seq   = max(max_seq, seq_num)
                 except (ValueError, IndexError):
