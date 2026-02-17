@@ -34,6 +34,11 @@ class FileManager:
         self.user_id   = user_id
         self.base_path = os.path.join(settings.MEDIA_ROOT, 'Uploaded_Files', str(user_id))
         self.base_url  = f"{settings.MEDIA_URL}Uploaded_Files/{user_id}"
+        
+        # Define the custom temp directory
+        self.custom_temp_dir =os.path.join(settings.MEDIA_ROOT,'temp_uploads')
+        if not os.path.exists(self.custom_temp_dir):
+            os.makedirs(self.custom_temp_dir, exist_ok=True)
 
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -45,7 +50,7 @@ class FileManager:
     
         # Images have no raw size limit — compressed to 2–5 MB on save
         if max_size_mb is None and file_purpose in IMAGE_PURPOSES:
-            max_size_mb = None   # explicit — no limit
+            max_size_mb = 35000   # explicit — no limit
         elif max_size_mb is None:
             max_size_mb = 10     # non-image profile files (e.g. PDFs)
 
@@ -267,7 +272,7 @@ class FileManager:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _save_file(self, file, category, file_purpose, product_id=None,
-                   sequence=None, allowed_extensions=None, max_size_mb=9999):
+                   sequence=None, allowed_extensions=None, max_size_mb=25*1024):
 
         if not self._is_valid_category(category):
             return {'success': False, 'error': 'Category must be "profile" or "product"'}
@@ -413,17 +418,25 @@ class FileManager:
 
     def _save_image(self, file, category_dir, product_id, sequence, timestamp):
         """
-        Convert ANY uploaded image to JPEG, compressed to 2–4 MB.
-        No input size limit — accepts all formats and resolutions.
+        Convert ANY uploaded image to JPEG, compressed to 2–5 MB.
+        Uses a custom temp directory and explicit handle management for Windows compatibility.
         """
         tmp_path = None
         try:
+            # Define the custom temp directory path
+            custom_temp_dir = r"D:\BE\Final Project\Farmo\ServerMedia\temp_uploads"
+            if not os.path.exists(custom_temp_dir):
+                os.makedirs(custom_temp_dir, exist_ok=True)
+
             ext = os.path.splitext(file.name)[1].lower()
-            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+        
+            # Create temp file in the specific custom directory
+            with tempfile.NamedTemporaryFile(dir=custom_temp_dir, delete=False, suffix=ext) as tmp:
                 for chunk in file.chunks():
                     tmp.write(chunk)
                 tmp_path = tmp.name
 
+            # Read the image using OpenCV
             img = cv2.imread(tmp_path)
             if img is None:
                 return {'success': False, 'error': 'Cannot read image — corrupt or unsupported format'}
@@ -434,10 +447,18 @@ class FileManager:
             file_name = f"{product_id}-img-{timestamp}-{sequence:03d}{IMAGE_SAVE_FORMAT}"
             file_path = os.path.join(category_dir, file_name)
 
+            # Compress and get bytes
             jpeg_bytes = self._compress_image_to_target(img)
 
+            # Write final file
             with open(file_path, 'wb') as f:
                 f.write(jpeg_bytes)
+
+            # CRITICAL FOR WINDOWS: Explicitly delete image object and collect garbage
+            # to release the file handle held by cv2.imread
+            del img
+            import gc
+            gc.collect()
 
             final_size_mb = os.path.getsize(file_path) / (1024 * 1024)
 
@@ -455,13 +476,17 @@ class FileManager:
         except Exception as e:
             return {'success': False, 'error': f'Image processing failed: {str(e)}'}
         finally:
-            if tmp_path and os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-            try:
-                file.seek(0)
-            except Exception:
-                pass
+            self._safe_cleanupp(tmp_path)
 
+    def _safe_cleanupp(self, path):
+        """Helper to handle Windows file locks during cleanup."""
+        if path and os.path.exists(path):
+            try:
+                os.unlink(path)
+            except PermissionError:
+                # Log the warning instead of crashing; 
+                # BigFileTransferHandler will attempt its own cleanup
+                print(f"Temporary file locked, cleanup deferred: {path}")
 
     def _save_profile_image(self, file, category_dir, file_purpose, timestamp):
         """
@@ -746,7 +771,7 @@ class FileManager:
                 'error'  : f'Invalid file type. Allowed: {", ".join(allowed_extensions)}',
             }
 
-        if max_size_mb < 9999 and file.size > max_size_mb * 1024 * 1024:
+        if max_size_mb is not None and file.size > max_size_mb * 1024 * 1024:
             return {'success': False, 'error': f'File size exceeds {max_size_mb}MB limit'}
 
         return {'success': True}

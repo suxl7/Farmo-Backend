@@ -1,6 +1,8 @@
 import os
-import json
 import hashlib
+import uuid
+import shutil
+import tempfile as tempfile
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
@@ -29,6 +31,11 @@ from backend.utils.media_handler import FileManager
 
 _upload_sessions = {}   # { upload_id: { meta... } }
 
+VIDEO_EXTS = ['.mp4', '.mov', '.avi', '.mkv', '.webm']
+IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff', '.gif']
+
+VIDEO_SINGLE_LIMIT = 25 * 1024 * 1024      # 25 MB
+VIDEO_MAX_SIZE     = 200 * 1024 * 1024     # 200 MB
 
 ##########################################################################################
 #                             Big File Upload — Chunked
@@ -43,369 +50,252 @@ _upload_sessions = {}   # { upload_id: { meta... } }
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def big_file_upload(request):
-    """
-    Chunked file upload endpoint.
-
-    Headers:
-        user-id: ID of the user uploading
-
-    Actions
-    -------
-    init
-        Body: {
-            action       : 'init',
-            subject      : 'PROFILE_PICTURE' | 'PRODUCT_MEDIA' | 'USER_ID_VERIFICATION_MEDIA',
-            file_purpose : 'profile-pic' | 'verification-doc-front' | 'verification-doc-back'
-                           | 'img' | 'vid',
-            file_name    : 'original_filename.jpg',
-            file_size    : <total bytes>,
-            total_chunks : <int>,
-            product_id   : <str>  (required for PRODUCT_MEDIA),
-            sequence     : <int>  (optional, auto if omitted),
-            checksum     : <md5 hex>  (optional, validated on finish if provided)
-        }
-        Returns: { upload_id, chunk_size }
-
-    chunk
-        Body (multipart): {
-            action      : 'chunk',
-            upload_id   : <str>,
-            chunk_index : <int, 0-based>,
-            file        : <binary chunk>
-        }
-        Returns: { upload_id, chunk_index, received }
-
-    finish
-        Body: {
-            action    : 'finish',
-            upload_id : <str>
-        }
-        Returns: { file_url, file_name, sequence, category, size }
-
-    abort
-        Body: { action: 'abort', upload_id: <str> }
-        Returns: { message }
-    """
-
-    userid = request.data.get('user_id') if request.data.get('user_id') else request.headers.get('user-id')
+    userid = request.data.get('user_id') or request.headers.get('user-id')
     action = request.data.get('action')
 
     if not userid:
-        return Response({'error': 'user-id header is required'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'user-id is required'}, status=400)
 
     if action == 'init':
         return _upload_init(request, userid)
-    elif action == 'chunk':
+    if action == 'chunk':
         return _upload_chunk(request, userid)
-    elif action == 'finish':
+    if action == 'finish':
         return _upload_finish(request, userid)
-    elif action == 'abort':
+    if action == 'abort':
         return _upload_abort(request, userid)
-    else:
-        return Response(
-            {'error': 'Invalid action. Use: init | chunk | finish | abort'},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+
+    return Response({'error': 'Invalid action'}, status=400)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Action handlers
-# ─────────────────────────────────────────────────────────────────────────────
-
+# ─────────────────────────────────────────────────────────────
+# INIT
+# ─────────────────────────────────────────────────────────────
 def _upload_init(request, userid):
-    """Register a new upload session and return an upload_id."""
+    file_name  = request.data.get('file_name')
+    file_size  = int(request.data.get('file_size', 0))
+    subject    = request.data.get('subject')
+    ext        = os.path.splitext(file_name)[1].lower()
 
-    subject      = request.data.get('subject')
-    file_purpose = request.data.get('file_purpose')
-    file_name    = request.data.get('file_name')
-    file_size    = request.data.get('file_size')
-    total_chunks = request.data.get('total_chunks')
-    product_id   = request.data.get('product_id')
-    sequence     = request.data.get('sequence')
-    checksum     = request.data.get('checksum')  # Optional MD5
+    if ext in VIDEO_EXTS and file_size > VIDEO_MAX_SIZE:
+        return Response({'error': 'Video exceeds 200MB limit'}, status=400)
 
-    # ── Validation ──────────────────────────────────────────────────────────
-    VALID_SUBJECTS = ['PROFILE_PICTURE', 'PRODUCT_MEDIA', 'USER_ID_VERIFICATION_MEDIA']
-    if subject not in VALID_SUBJECTS:
-        return Response({'error': f'subject must be one of: {", ".join(VALID_SUBJECTS)}'}, status=400)
+    is_image        = ext in IMAGE_EXTS
+    is_small_video  = ext in VIDEO_EXTS and file_size <= VIDEO_SINGLE_LIMIT
 
-    if not file_name:
-        return Response({'error': 'file_name is required'}, status=status.HTTP_400_BAD_REQUEST)
-
-    try:
-        file_size    = int(file_size)
-        total_chunks = int(total_chunks)
-        if file_size <= 0 or total_chunks <= 0:
-            raise ValueError
-    except (TypeError, ValueError):
-        return Response({'error': 'file_size and total_chunks must be positive integers'}, status=status.HTTP_400_BAD_REQUEST)
-
-    if subject == 'PRODUCT_MEDIA' and not product_id:
-        return Response({'error': 'product_id is required for PRODUCT_MEDIA'}, status=status.HTTP_400_BAD_REQUEST)
-
-    # ── Determine size limits ────────────────────────────────────────────────
-    ext = os.path.splitext(file_name)[1].lower()
-    VIDEO_EXTS = ['.mp4', '.mov', '.avi', '.mkv', '.webm']
-    IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff', '.gif']
-    
-    if ext in VIDEO_EXTS:
-        max_size_mb = 200       # FHD video, any size
-    elif ext in IMAGE_EXTS:
-        max_size_mb = None      # no limit — FileManager compresses to 2–5 MB on save
+    if is_image or is_small_video or ext not in VIDEO_EXTS:
+        total_chunks = 1
+        mode = 'full'
     else:
-        max_size_mb = 10        # PDFs, docs, etc.
-    
-    if max_size_mb and file_size > max_size_mb * 1024 * 1024:
-        return Response({'error': f'File too large. Max size: {max_size_mb}MB'}, status=400)
+        total_chunks = int(request.data.get('total_chunks', 1))
+        mode = 'chunked'
 
-    # ── Create temp directory for chunks ────────────────────────────────────
-    import uuid
-    upload_id   = uuid.uuid4().hex
-    chunks_dir  = os.path.join(settings.MEDIA_ROOT, 'temp_uploads', upload_id)
+    upload_id = uuid.uuid4().hex
+    chunks_dir = os.path.join(settings.MEDIA_ROOT, 'temp_uploads', upload_id)
+    os.makedirs(chunks_dir, exist_ok=True)
 
-    try:
-        os.makedirs(chunks_dir, exist_ok=True)
-    except Exception as e:
-        return Response({'error': f'Failed to create upload session: {str(e)}'}, status=500)
-
-    # ── Store session metadata ───────────────────────────────────────────────
     _upload_sessions[upload_id] = {
-        'userid'       : userid,
-        'subject'      : subject,
-        'file_purpose' : file_purpose,
-        'file_name'    : file_name,
-        'file_size'    : file_size,
-        'total_chunks' : total_chunks,
-        'received'     : [],          # list of received chunk indices
-        'product_id'   : product_id,
-        'sequence'     : int(sequence) if sequence else None,
-        'checksum'     : checksum,
-        'chunks_dir'   : chunks_dir,
-    }
-
-    CHUNK_SIZE = 2 * 1024 * 1024  # 2 MB recommended chunk size hint for client
-
-    return Response({
-        'upload_id'  : upload_id,
-        'chunk_size' : CHUNK_SIZE,
+        'userid'      : userid,
+        'subject'     : subject,
+        'file_name'   : file_name,
+        'file_size'   : file_size,
         'total_chunks': total_chunks,
-        'message'    : 'Upload session initialized',
-    }, status=status.HTTP_200_OK)
-
-
-def _upload_chunk(request, userid):
-    """Receive and store a single chunk."""
-
-    upload_id   = request.data.get('upload_id')
-    chunk_index = request.data.get('chunk_index')
-    chunk_file  = request.FILES.get('file')
-
-    if not upload_id or chunk_index is None or not chunk_file:
-        return Response({'error': 'upload_id, chunk_index, and file are required'}, status=400)
-
-    # ── Session lookup ───────────────────────────────────────────────────────
-    session = _upload_sessions.get(upload_id)
-    if not session:
-        return Response({'error': 'Upload session not found or expired'}, status=404)
-
-    if session['userid'] != userid:
-        return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
-
-    try:
-        chunk_index = int(chunk_index)
-    except (TypeError, ValueError):
-        return Response({'error': 'chunk_index must be an integer'}, status=400)
-
-    if chunk_index < 0 or chunk_index >= session['total_chunks']:
-        return Response({'error': f'chunk_index out of range (0–{session["total_chunks"] - 1})'}, status=400)
-
-    if chunk_index in session['received']:
-        # Idempotent — already received this chunk
-        return Response({'upload_id': upload_id, 'chunk_index': chunk_index, 'received': True})
-
-    # ── Write chunk to disk ──────────────────────────────────────────────────
-    chunk_path = os.path.join(session['chunks_dir'], f'chunk_{chunk_index:05d}')
-    try:
-        with open(chunk_path, 'wb') as f:
-            for data in chunk_file.chunks():
-                f.write(data)
-    except Exception as e:
-        return Response({'error': f'Failed to write chunk: {str(e)}'}, status=500)
-
-    session['received'].append(chunk_index)
+        'received'    : set(),
+        'chunks_dir'  : chunks_dir,
+        'product_id'  : request.data.get('product_id'),
+        'file_purpose': request.data.get('file_purpose'),
+        'sequence'    : request.data.get('sequence'),
+    }
 
     return Response({
         'upload_id'   : upload_id,
-        'chunk_index' : chunk_index,
-        'received'    : True,
-        'progress'    : f"{len(session['received'])}/{session['total_chunks']}",
-    }, status=status.HTTP_200_OK)
+        'total_chunks': total_chunks,
+        'mode'        : mode
+    })
 
 
-def _upload_finish(request, userid):
-    """Assemble chunks, validate, and pass to FileManager."""
-
-    upload_id = request.data.get('upload_id')
-
-    if not upload_id:
-        return Response({'error': 'upload_id is required'}, status=400)
+# ─────────────────────────────────────────────────────────────
+# CHUNK
+# ─────────────────────────────────────────────────────────────
+def _upload_chunk(request, userid):
+    upload_id   = request.data.get('upload_id')
+    chunk_index = int(request.data.get('chunk_index', 0))
+    file        = request.FILES.get('file')
 
     session = _upload_sessions.get(upload_id)
-    if not session:
-        return Response({'error': 'Upload session not found or expired'}, status=404)
+    if not session or session['userid'] != userid:
+        return Response({'error': 'Invalid session'}, status=403)
 
-    if session['userid'] != userid:
-        return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
+    chunk_path = os.path.join(
+        session['chunks_dir'], f'chunk_{chunk_index:05d}'
+    )
 
-    # ── Check all chunks received ────────────────────────────────────────────
-    total    = session['total_chunks']
-    received = sorted(session['received'])
-    expected = list(range(total))
+    with open(chunk_path, 'wb') as f:
+        for data in file.chunks():
+            f.write(data)
 
-    if received != expected:
-        missing = sorted(set(expected) - set(received))
-        return Response({'error': f'Missing chunks: {missing}'}, status=400)
+    session['received'].add(chunk_index)
+    return Response({'success': True, 'chunk': chunk_index})
 
-    # ── Assemble chunks into a temp file ────────────────────────────────────
-    import tempfile as _tempfile
-    ext = os.path.splitext(session['file_name'])[1].lower()
-    assembled_path = None
 
+# ─────────────────────────────────────────────────────────────
+# FINISH
+# ─────────────────────────────────────────────────────────────
+def _upload_finish(request, userid):
     try:
-        with _tempfile.NamedTemporaryFile(delete=False, suffix=ext) as assembled:
-            assembled_path = assembled.name
-            md5 = hashlib.md5()
+        upload_id = request.data.get('upload_id')
+        if not upload_id:
+            return Response({'error': 'upload_id missing'}, status=400)
 
-            for i in range(total):
+        session = _upload_sessions.get(upload_id)
+        if not session:
+            return Response({'error': 'Session not found'}, status=400)
+
+        # 1. Validation
+        total_chunks = session.get('total_chunks')
+        received = session.get('received')
+
+        if not isinstance(total_chunks, int) or total_chunks < 1:
+            return Response({'error': 'Invalid total_chunks'}, status=400)
+        if not isinstance(received, set):
+            return Response({'error': 'Invalid received set'}, status=400)
+
+        missing = set(range(total_chunks)) - received
+        if missing:
+            return Response({'error': 'Missing chunks', 'missing': list(missing)}, status=400)
+
+        # 2. Assemble chunks into original file
+        ext = os.path.splitext(session['file_name'])[1].lower()
+        assembled_path = os.path.join(session['chunks_dir'], f'assembled{ext}')
+        with open(assembled_path, 'wb') as assembled:
+            for i in range(total_chunks):
                 chunk_path = os.path.join(session['chunks_dir'], f'chunk_{i:05d}')
-                with open(chunk_path, 'rb') as chunk_f:
-                    data = chunk_f.read()
-                    assembled.write(data)
-                    md5.update(data)
+                with open(chunk_path, 'rb') as f:
+                    assembled.write(f.read())
 
-        # ── Optional checksum validation ─────────────────────────────────────
-        if session['checksum']:
-            if md5.hexdigest() != session['checksum']:
-                os.unlink(assembled_path)
-                return Response({'error': 'Checksum mismatch — upload may be corrupted'}, status=400)
-
-        # ── Wrap assembled file so FileManager can consume it ────────────────
+        # 3. Convert to Django-compatible file
         django_file = _AssembledFile(assembled_path, session['file_name'])
 
-        fm = FileManager(userid)
-        subject = session['subject']
+        # 4. Save to database & permanent storage
+        result = _save_file_to_db(userid, session, django_file)
 
-        if subject == 'PROFILE_PICTURE':
-            result = fm.save_profile_file(
-                file=django_file,
-                file_purpose=session['file_purpose'] or 'profile-pic',
-            )
-        elif subject == 'PRODUCT_MEDIA':
-            result = fm.save_product_file(
-                file=django_file,
-                product_id=session['product_id'],
-                file_type=session['file_purpose'] or 'img',
-                sequence=session['sequence'],
-            )
-        elif subject == 'USER_ID_VERIFICATION_MEDIA':
-            result = fm.save_profile_file(
-                file=django_file,
-                file_purpose=session['file_purpose'] or 'verification-doc-front',
-                max_size_mb=10,
-            )
-        else:
-            os.unlink(assembled_path)
-            return Response({'error': 'Unknown subject'}, status=400)
+        # IMPORTANT: close file handle before cleanup
+        django_file.close()
 
-        # ── Cleanup ──────────────────────────────────────────────────────────
+        # 5. Cleanup
         _cleanup_session(upload_id, assembled_path)
 
-        if not result['success']:
-            return Response({'error': result['error']}, status=status.HTTP_400_BAD_REQUEST)
+        if not result.get('success'):
+            return Response({'error': result.get('error', 'Storage failed')}, status=400)
 
-        return Response({
-            'message'   : 'File uploaded successfully',
-            'file_url'  : result['file_url'],
-            'file_name' : result['file_name'],
-            'sequence'  : result.get('sequence'),
-            'category'  : result.get('category'),
-            'size'      : os.path.getsize(result['file_path']) if os.path.exists(result['file_path']) else None,
-        }, status=status.HTTP_200_OK)
+        return Response(result)
 
     except Exception as e:
-        _cleanup_session(upload_id, assembled_path)
-        return Response({'error': f'Assembly failed: {str(e)}'}, status=500)
+        if 'upload_id' in locals():
+            _cleanup_session(upload_id)
+        return Response({'error': str(e)}, status=500)
 
 
+
+def _save_file_to_db(userid, session, django_file):
+
+    from backend.models import Users, UsersProfile, UserActivity
+
+    """
+    This method bridges the uploaded file to your FileManager.
+    FileManager handles the compression, DB saving, and URL generation.
+    """
+    fm = FileManager(userid)
+    subject = session['subject']
+
+    if subject == 'PROFILE_PICTURE':
+        result = fm.save_profile_file(
+            file=django_file, 
+            file_purpose=session['file_purpose'] or 'profile-pic'
+        )
+    
+    elif subject == 'PRODUCT_MEDIA':
+        result = fm.save_product_file(
+            file=django_file,
+            product_id=session['product_id'],
+            file_type=session['file_purpose'] or 'img',
+            sequence=session['sequence']
+        )
+    
+    if not result.get('success'):
+        return {'success': False, 'error': f'Unsupported subject: {subject}'}
+    
+    file_url = result.get('file_url')
+    if subject == 'PROFILE_PICTURE':
+                # Update database here
+        user_obj = Users.objects.get(user_id=userid)
+        profile = UsersProfile.objects.get(profile_id=user_obj.profile_id.profile_id)
+        profile.profile_url = result['file_url']
+        profile.save()
+
+        # Log activity
+        UserActivity.create_activity(user_obj, activity="UPDATE_PROFILE_PIC", discription="")
+
+        return {'success': True, 'file_url': file_url}
+    
+    elif subject == 'PRODUCT_MEDIA':
+        return {'success': True, 'file_url': file_url}
+
+    
+    
+
+# ─────────────────────────────────────────────────────────────
+# ABORT
+# ─────────────────────────────────────────────────────────────
 def _upload_abort(request, userid):
-    """Cancel an in-progress upload and remove temp files."""
-
     upload_id = request.data.get('upload_id')
-    if not upload_id:
-        return Response({'error': 'upload_id is required'}, status=400)
-
     session = _upload_sessions.get(upload_id)
-    if not session:
-        return Response({'message': 'Session not found (may have already been cleaned up)'})
 
-    if session['userid'] != userid:
-        return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
+    if session and session['userid'] == userid:
+        _cleanup_session(upload_id)
+        return Response({'message': 'Upload aborted'})
 
-    _cleanup_session(upload_id)
-    return Response({'message': 'Upload aborted and temp files removed'})
+    return Response({'error': 'Session not found'}, status=404)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
+# ─────────────────────────────────────────────────────────────
+# CLEANUP
+# ─────────────────────────────────────────────────────────────
 def _cleanup_session(upload_id, assembled_path=None):
-    """Remove temp chunk directory and session entry."""
-    import shutil
     session = _upload_sessions.pop(upload_id, None)
-    if session and os.path.exists(session['chunks_dir']):
+    if session:
         shutil.rmtree(session['chunks_dir'], ignore_errors=True)
     if assembled_path and os.path.exists(assembled_path):
-        try:
-            os.unlink(assembled_path)
-        except Exception:
-            pass
+        os.unlink(assembled_path)
 
 
+# ─────────────────────────────────────────────────────────────
+# FILE WRAPPER
+# ─────────────────────────────────────────────────────────────
 class _AssembledFile:
-    """
-    Minimal file-like wrapper around an assembled temp file so that FileManager
-    (which expects a Django UploadedFile interface) can consume it.
-    """
+    def __init__(self, path, name):
+        self.path = path
+        self.name = name
+        self.size = os.path.getsize(path)
+        self._fh  = open(path, 'rb')
 
-    def __init__(self, path, original_name):
-        self._path = path
-        self.name  = original_name
-        self.size  = os.path.getsize(path)
-        self._fh   = open(path, 'rb')
-
-    def chunks(self, chunk_size=64 * 1024):
+    def chunks(self, size=64 * 1024):
         self._fh.seek(0)
         while True:
-            data = self._fh.read(chunk_size)
+            data = self._fh.read(size)
             if not data:
                 break
             yield data
 
+    def read(self, size=-1):
+        return self._fh.read(size)
+
     def seek(self, pos):
         self._fh.seek(pos)
-
-    def read(self, size=-1):
-        return self._fh.read(size) if size >= 0 else self._fh.read()
 
     def close(self):
         self._fh.close()
 
-    def __del__(self):
-        try:
-            self._fh.close()
-        except Exception:
-            pass
 
 ##########################################################################################
 #                             Big File UPLOAD End
