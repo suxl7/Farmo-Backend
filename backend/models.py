@@ -54,10 +54,7 @@ class UsersProfile(models.Model):
 
     @classmethod
     def create_profile(cls, profile_url,f_name, m_name, l_name, user_type, province, district, municipal, ward, tole, dob, sex, phone02, email, facebook, whatsapp, about):
-        print(1)
         profile_id = f_name[0].upper() + l_name[0].upper() +'-' +''.join(random.choices(string.digits, k=8))
-        print(id)
-        print(2)
         return cls.objects.create(
             profile_id=profile_id,
             profile_url=profile_url,
@@ -195,7 +192,7 @@ class Wallet(models.Model):
 
 class Product(models.Model):
     """Product model for farmer's agricultural products"""
-    p_id = models.AutoField( primary_key=True)
+    p_id = models.CharField(primary_key=True, max_length=100)
     user_id = models.ForeignKey(Users, on_delete=models.PROTECT)
     name = models.CharField(max_length=255)
     category = models.CharField(max_length=100)
@@ -209,16 +206,19 @@ class Product(models.Model):
     expiry_Date = models.DateField(null=True, blank=True)
     description = models.TextField(blank=True, null=True)
     delivery_option = models.CharField(max_length=100, default='Not-Available')
-    product_status = models.CharField(max_length=100,  default='Available')
-    media_url = models.JSONField(max_length=255, blank=True, null=True)
-    
+    product_status = models.CharField(max_length=100, default='Available')
+    media_url = models.JSONField(blank=True, null=True)
 
     @classmethod
-    def create_product(cls, user_id,media_url, name, category, is_organic, discount_type, discount, quantity_available, cost_per_unit, produced_date, expiry_Date, description, delivery_option):
+    def create_product(cls, user, name, category, is_organic, discount_type=None, discount=None,
+                       quantity_available=0, cost_per_unit=0, produced_date=None, expiry_Date=None,
+                       description=None, delivery_option="Not-Available"):
         """Create a new product"""
-        obj = cls.objects.create(
-            user_id=user_id,
-            media_url=media_url,
+        pid = user.user_id + '-P-' + secrets.token_urlsafe(10)
+        product = cls.objects.create(
+            p_id=pid,
+            user_id=user,
+            media_url={},  # empty JSON
             name=name,
             category=category,
             is_organic=is_organic,
@@ -230,10 +230,10 @@ class Product(models.Model):
             produced_date=produced_date,
             expiry_Date=expiry_Date,
             description=description,
-            delivery_option	=delivery_option,
-            product_status='AVAILABLE'
+            delivery_option="Not-Available",
+            product_status='Available'
         )
-        return obj.p_id
+        return product
 
 
     def __str__(self):

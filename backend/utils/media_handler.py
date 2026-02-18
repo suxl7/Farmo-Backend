@@ -331,57 +331,7 @@ class FileManager:
                     # BigFileTransferHandler will attempt its own cleanup
                     print(f"Temporary file locked, cleanup deferred: {tmp_path}")
 
-    def _save_profile_image(self, file, category_dir, file_purpose, timestamp):
-        """
-        Convert a profile picture or verification doc image to JPEG.
-        Same compression pipeline as product images (2 to 5 MB target).
-        """
-        tmp_path = None
-        try:
-            ext = os.path.splitext(file.name)[1].lower()
-            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-                for chunk in file.chunks():
-                    tmp.write(chunk)
-                tmp_path = tmp.name
-
-            img = cv2.imread(tmp_path)
-            if img is None:
-                return {'success': False, 'error': 'Cannot read image — corrupt or unsupported format'}
-
-            file_name = f"{file_purpose}-{timestamp}{IMAGE_SAVE_FORMAT}"
-            counter   = 1
-            while os.path.exists(os.path.join(category_dir, file_name)):
-                file_name = f"{file_purpose}-{timestamp}-{counter}{IMAGE_SAVE_FORMAT}"
-                counter += 1
-
-            file_path  = os.path.join(category_dir, file_name)
-            jpeg_bytes = self._compress_image_to_target(img)
-
-            with open(file_path, 'wb') as f:
-                f.write(jpeg_bytes)
-
-            final_size_mb = os.path.getsize(file_path) / (1024 * 1024)
-
-            return {
-                'success'   : True,
-                'file_path' : file_path,
-                'file_url'  : f"{self.base_url}/profile/{file_name}",
-                'file_name' : file_name,
-                'sequence'  : None,
-                'category'  : 'profile',
-                'size_mb'   : round(final_size_mb, 2),
-            }
-
-        except Exception as e:
-            return {'success': False, 'error': f'Profile image processing failed: {str(e)}'}
-        finally:
-            if tmp_path and os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-            try:
-                file.seek(0)
-            except Exception:
-                pass
-
+    
 
     # ─────────────────────────────────────────────────────────────────────────
     # Internal — video processing

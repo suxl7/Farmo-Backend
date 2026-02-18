@@ -134,7 +134,11 @@ urlpatterns = [
 
     path("api/internal/update-farm-products/", update_farm_products, name="update_farm_products"),
     path("api/internal/download-farm-products/", download_farm_products, name="download_farm_products"),
-
+    
+    #BigFile Upload/Download
+    path('api/file/upload/', big_file_upload, name='big_file_upload'),
+    path('api/file/download/', big_file_download, name='big_file_download'),
+    
     # Authentication
     path('api/auth/check-userid/', check_userid_available, name='check_userid_available'),
     path('api/auth/login/', login, name='login'), # checked
@@ -161,9 +165,7 @@ urlpatterns = [
     path('api/user/transaction-history/', get_transaction_history_user, name='get_transaction_history_user'),
     path('api/admin/transaction-history/', get_transaction_history_admin, name='get_transaction_history_admin'),
    
-    #BigFile Upload/Download
-    path('api/file/upload/', big_file_upload, name='big_file_upload'),
-    path('api/file/download/', big_file_download, name='big_file_download'),
+    
     # Wallet
     path('api/user/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin'),
     path('api/user/wallet/req-own-wallet/', req_own_wallet, name='req_own_wallet'),

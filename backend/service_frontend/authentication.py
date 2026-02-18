@@ -250,6 +250,8 @@ def logout(request):
         token_obj = Tokens.objects.get(token=token, user_id=user)
         token_obj.deactivate()
         
+        disc = "Logout from " + token_obj.device_info + " device only."
+        UserActivity.create_activity(user, activity="LOGOUT", discription=disc)
         return Response({}, status=status.HTTP_200_OK)
     except Tokens.DoesNotExist:
         return Response({'error': 'Invalid Login token.'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -266,6 +268,9 @@ def logout_all_devices(request):
     
     try:
         Tokens.deactivate_all_user_tokens(user)
+
+        
+        UserActivity.create_activity(user, activity="LOGOUT_ALL", discription= "Logout from all devices.")
         return Response({'message': 'Logout from all devices successful!'}, status=status.HTTP_200_OK)
     except Tokens.DoesNotExist:
         return Response({'error': 'Invalid Login token.'}, status=status.HTTP_400_BAD_REQUEST)

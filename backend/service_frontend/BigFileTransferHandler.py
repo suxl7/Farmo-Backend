@@ -144,56 +144,57 @@ def _upload_chunk(request, userid):
 def _upload_finish(request, userid):
     try:
         upload_id = request.data.get('upload_id')
-        if not upload_id:
-            return Response({'error': 'upload_id missing'}, status=400)
-
         session = _upload_sessions.get(upload_id)
+        
         if not session:
-            return Response({'error': 'Session not found'}, status=400)
+            return Response({'error': 'Session expired or not found'}, status=400)
 
-        # 1. Validation
-        total_chunks = session.get('total_chunks')
-        received = session.get('received')
+        total_chunks = session['total_chunks']
+        received = session['received']
 
-        if not isinstance(total_chunks, int) or total_chunks < 1:
-            return Response({'error': 'Invalid total_chunks'}, status=400)
-        if not isinstance(received, set):
-            return Response({'error': 'Invalid received set'}, status=400)
+        # 1. Verify all chunks exist
+        if len(received) < total_chunks:
+            missing = list(set(range(total_chunks)) - received)
+            return Response({'error': 'Incomplete upload', 'missing': missing}, status=400)
 
-        missing = set(range(total_chunks)) - received
-        if missing:
-            return Response({'error': 'Missing chunks', 'missing': list(missing)}, status=400)
-
-        # 2. Assemble chunks into original file
+        # 2. Assemble with strict binary sorting
         ext = os.path.splitext(session['file_name'])[1].lower()
-        assembled_path = os.path.join(session['chunks_dir'], f'assembled{ext}')
-        with open(assembled_path, 'wb') as assembled:
+        assembled_path = os.path.join(session['chunks_dir'], f"final_build{ext}")
+        
+        with open(assembled_path, 'wb') as outfile:
             for i in range(total_chunks):
                 chunk_path = os.path.join(session['chunks_dir'], f'chunk_{i:05d}')
-                with open(chunk_path, 'rb') as f:
-                    assembled.write(f.read())
+                with open(chunk_path, 'rb') as infile:
+                    # Use shutil.copyfileobj for memory efficiency with large videos
+                    shutil.copyfileobj(infile, outfile)
+            
+            outfile.flush()
+            os.fsync(outfile.fileno()) # Force write to disk to prevent 'moov' loss
 
-        # 3. Convert to Django-compatible file
-        django_file = _AssembledFile(assembled_path, session['file_name'])
-
-        # 4. Save to database & permanent storage
-        result = _save_file_to_db(userid, session, django_file)
-
-        # IMPORTANT: close file handle before cleanup
-        django_file.close()
+        # 3. Create a wrapper that Django's FileField understands
+        with open(assembled_path, 'rb') as f:
+            django_file = InMemoryUploadedFile(
+                f, 
+                None, 
+                session['file_name'], 
+                mimetypes.guess_type(session['file_name'])[0], 
+                os.path.getsize(assembled_path), 
+                None
+            )
+            
+            # 4. Save to DB (Ensure p_id is used here)
+            result = _save_file_to_db(userid, session, django_file)
 
         # 5. Cleanup
-        _cleanup_session(upload_id, assembled_path)
+        _cleanup_session(upload_id)
 
         if not result.get('success'):
-            return Response({'error': result.get('error', 'Storage failed')}, status=400)
+            return Response({'error': result.get('error')}, status=400)
 
         return Response(result)
 
     except Exception as e:
-        if 'upload_id' in locals():
-            _cleanup_session(upload_id)
-        return Response({'error': str(e)}, status=500)
+        return Response({'error': f"Assembly failed: {str(e)}"}, status=500)
 
 
 
@@ -213,21 +214,11 @@ def _save_file_to_db(userid, session, django_file):
             file=django_file, 
             file_purpose=session['file_purpose'] or 'profile-pic'
         )
-    
-    elif subject == 'PRODUCT_MEDIA':
-        result = fm.save_product_file(
-            file=django_file,
-            product_id=session['product_id'],
-            file_type=session['file_purpose'] or 'img',
-            sequence=session['sequence']
-        )
-    
-    if not result.get('success'):
-        return {'success': False, 'error': f'Unsupported subject: {subject}'}
-    
-    file_url = result.get('file_url')
-    if subject == 'PROFILE_PICTURE':
-                # Update database here
+        
+        if not result.get('success'):
+            return {'success': False, 'error': result.get('error')}
+        
+        # Update database
         user_obj = Users.objects.get(user_id=userid)
         profile = UsersProfile.objects.get(profile_id=user_obj.profile_id.profile_id)
         profile.profile_url = result['file_url']
@@ -236,14 +227,70 @@ def _save_file_to_db(userid, session, django_file):
         # Log activity
         UserActivity.create_activity(user_obj, activity="UPDATE_PROFILE_PIC", discription="")
 
-        return {'success': True, 'file_url': file_url}
+        return {'success': True, 'file_url': result['file_url']}
     
     elif subject == 'PRODUCT_MEDIA':
-        return {'success': True, 'file_url': file_url}
+        product_id = session.get('product_id')
+        if not product_id:
+            return {'success': False, 'error': 'product_id is required'}
+        
+        try:
+            # Using p_id as per your model requirements
+            product = Product.objects.get(p_id=product_id, user_id__user_id=userid)
+        except Product.DoesNotExist:
+            return {'success': False, 'error': 'Product not found'}
+        
+        # Determine the media type (img or vid)
+        media_type = session.get('file_purpose', 'img')
+        
+        # Save file via FileManager
+        result = fm.save_product_file(
+            file=django_file,
+            product_id=product_id,
+            file_type=media_type,
+            sequence=session.get('sequence')
+        )
+        
+        if not result.get('success'):
+            return {'success': False, 'error': result.get('error')}
+        
+        # GET CURRENT MEDIA - Ensure it's a list
+        current_media = product.media_url
+        if not isinstance(current_media, list):
+            current_media = []
 
-    
-    
+        # ASSIGN SEQUENCE
+        # If frontend sent a sequence, use it; otherwise, auto-increment
+        sequence = session.get('sequence')
+        if sequence is None:
+            sequence = max([m.get('serial_no', 0) for m in current_media], default=0) + 1
+        else:
+            sequence = int(sequence)
 
+        # CREATE ENTRY
+        new_media_entry = {
+            'serial_no': sequence,
+            'media_url': result['file_url'],
+            'media_type': media_type # This ensures 'vid' is saved when it's a video
+        }
+
+        # Check if this serial_no already exists (to prevent duplicates if a retry happens)
+        # and append the new media
+        current_media = [m for m in current_media if m.get('serial_no') != sequence]
+        current_media.append(new_media_entry)
+        
+        # Final Sort by serial_no to keep the database list clean
+        current_media.sort(key=lambda x: x['serial_no'])
+        
+        product.media_url = current_media
+        product.save()
+
+        return {
+            'success': True, 
+            'file_url': result['file_url'],
+            'serial_no': sequence,
+            'media_type': media_type
+        }
 # ─────────────────────────────────────────────────────────────
 # ABORT
 # ─────────────────────────────────────────────────────────────
