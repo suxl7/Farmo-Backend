@@ -33,16 +33,6 @@ def add_product_FromAdmin(request):
     return response
 
 
-@api_view(['POST'])
-@permission_classes([HasValidTokenForUser, IsFarmer])
-def add_product(request):
-    user_id = request.headers.get('user-id')
-    response = handle_product_creation(user_id, request.data, request.FILES.getlist('media_files'))
-    return response
-
-
-
-
 def handle_product_creation(user_id, data, media_files):
     name = data.get('name')
     category = data.get('category')

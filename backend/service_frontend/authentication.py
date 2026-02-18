@@ -29,10 +29,7 @@ def check_generate_save_new_token(user, device_info):
         oldest_token.save(update_fields=["token_status"])
     
     # Step 3: Set expiration based on user type
-    if user.is_admin:
-        expiration_days = 1  # Admin tokens valid for 1 day
-    else:
-        expiration_days = 40  # Farmer/Consumer tokens valid for 40 days
+    expiration_days = 1  
     
     # Step 4: Create the new token using the model's create_token method
     new_token = Tokens.create_token(user, days=expiration_days)
@@ -151,6 +148,11 @@ def login_with_token(request):
             refresh_token=refresh_token,
             device_info=device_info
         )
+
+        if token_entry.token_status != 'ACTIVE':
+            return Response({
+            'error': 'Token is expired.'
+            }, status=status.HTTP_401_UNAUTHORIZED)
         
         user = token_entry.user_id
         #print('2')
@@ -158,7 +160,7 @@ def login_with_token(request):
         if user.profile_status != 'ACTIVATED':
             return Response({
                # 'req_access': False,
-                'error': 'Account is inactive or Suspended.'
+                'error': 'Account is deactivated or Suspended.'
             }, status=status.HTTP_403_FORBIDDEN)
         
         # Check if token is expired (after 40 days)
@@ -169,6 +171,7 @@ def login_with_token(request):
             new_token_obj = check_generate_save_new_token(user, device_info) 
             new_token = new_token_obj.token
             new_refresh_token = new_token_obj.refresh_token
+            token_entry.deactivate()
             
             UserActivity.create_activity(user=user, activity="LOGIN", discription="")
             
@@ -197,7 +200,7 @@ def login_with_token(request):
         #print('5')
         return Response({
             #'req_access': False,
-            'error_code': 'Invalid Token. Try to Login through Password.'
+            'error': 'Invalid Token. Try to Login through Password.'
         }, status=status.HTTP_401_UNAUTHORIZED)
 
 

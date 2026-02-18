@@ -5,10 +5,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from backend.models import Users, Wallet, Transaction
 from backend.serializers import VerificationSerializer as VS
-import secrets
-from django.utils import timezone
-from django.utils.crypto import get_random_string
-from rest_framework.views import APIView
+
 from backend.service_frontend.serviceHome import  get_todays_income, get_todays_expense
 
 ##########################################################################################

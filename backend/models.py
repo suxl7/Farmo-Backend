@@ -428,7 +428,7 @@ class Tokens(models.Model):
 
 
     @classmethod
-    def create_token(cls, user, days=40):
+    def create_token(cls, user, days=1):
         """Generate a random token and set expiry days ahead"""
 
         token = secrets.token_urlsafe(32)

@@ -491,7 +491,7 @@ class FileManager:
     def _save_profile_image(self, file, category_dir, file_purpose, timestamp):
         """
         Convert a profile picture or verification doc image to JPEG.
-        Same compression pipeline as product images (2–4 MB target).
+        Same compression pipeline as product images (2 to 5 MB target).
         """
         tmp_path = None
         try:
