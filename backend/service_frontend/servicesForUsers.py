@@ -242,7 +242,7 @@ def admin_list(request):
     # ── Base queryset ────────────────────────────────────────────────────────
     qs = (
         Users.objects
-        .filter(is_admin=True)   # profile_id is the FK → UsersProfile
+        .filter(is_admin=True)
         .order_by('profile_id__f_name', 'profile_id__m_name', 'profile_id__l_name')
     )
 
@@ -250,11 +250,11 @@ def admin_list(request):
     if profile_status.lower() != 'all status':
         qs = qs.filter(profile_status=profile_status)
 
-    if user_type.lower() !='all admins':
+    if user_type.lower() != 'all admins':
         qs = qs.filter(profile_id__user_type=user_type)
 
     # ── Search (by name tokens or user_id) ───────────────────────────────────
-    if search_term != '' or search_term != None:
+    if search_term:   # ✅ Fixed: was `!= '' or != None` (always True)
         qs = qs.filter(
             Q(user_id__icontains=search_term)
             | Q(profile_id__f_name__icontains=search_term)
@@ -278,12 +278,12 @@ def admin_list(request):
     # ── Serialize ────────────────────────────────────────────────────────────
     admins = [
         {
-            'user_type':   user.profile_id.user_type,
-            'id': user.user_id,
-            'name': user.get_full_name_from_userModel(),
-            'contact': user.phone,
-            'location': f"{user.profile_id.municipal}, {user.profile_id.district}",
-            'status': user.profile_status,  
+            'user_type': user.profile_id.user_type,
+            'id':        user.user_id,
+            'name':      user.get_full_name_from_userModel(),
+            'contact':   user.phone,
+            'location':  f"{user.profile_id.municipal}, {user.profile_id.district}",
+            'status':    user.profile_status,
         }
         for user in page_obj.object_list
     ]
@@ -291,7 +291,7 @@ def admin_list(request):
     return Response(
         {
             'admins':       admins,
-            'total':        paginator.count,          # total matching records
+            'total':        paginator.count,
             'total_pages':  paginator.num_pages,
             'current_page': page_obj.number,
             'has_next':     page_obj.has_next(),
