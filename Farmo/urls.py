@@ -48,7 +48,8 @@ from backend.service_frontend.userProfile import (
     view_user_profile_by_admin)
 
 from backend.service_frontend.servicesForUsers import (
-    other_user_profile,
+    user_admin_page,
+    admin_list,
     search_user,
     user_farmer_page,
     user_consumer_page,
@@ -153,7 +154,6 @@ urlpatterns = [
     path('api/auth/forgot-password-change-password/', forget_password_change_password, name='forget_password_change_password'), # checked
 
     # User
-    path('api/admin/view-user-profile/', view_user_profile_by_admin, name='view_user_profile'),
     path('api/user/update-profile-picture/', update_profile_picture, name='update_profile_picture'),
     path('api/user/view-profile/', view_own_profile, name='view_profile'),
     path('api/user/verification-request/', verification_request, name='verification_request'),
@@ -163,25 +163,29 @@ urlpatterns = [
     path('api/user/consumer/all-orders/', all_consumer_orders, name='all_consumer_orders'),
     path('api/user/farmer/order-detail/', get_order_detail, name='get_order_detail'),
     path('api/user/transaction-history/', get_transaction_history_user, name='get_transaction_history_user'),
-    path('api/admin/transaction-history/', get_transaction_history_admin, name='get_transaction_history_admin'),
+    
    
     
     # Wallet
     path('api/user/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin'),
     path('api/user/wallet/req-own-wallet/', req_own_wallet, name='req_own_wallet'),
-    path('api/admin/wallet/req-wallet-by-admin/', req_wallet_by_admin, name='req_wallet_by_admin'),
     path('api/user/wallet/change-wallet-pin/', change_wallet_pin, name='change_wallet_pin'),
     path('api/user/wallet/forget-wallet-pin/', forget_wallet_pin, name='forget_wallet_pin'),
 
-    # Address and others
-    path('api/admin/user-profile/', other_user_profile, name='other_user_profile'),
+    # Admin
     path('api/admin/search-user/', search_user, name='search_user'),
+    path('api/admin/view-user-profile/', view_user_profile_by_admin, name='view_user_profile'),
+    path('api/admin/wallet/req-wallet-by-admin/', req_wallet_by_admin, name='req_wallet_by_admin'),
     path("api/admin/farmer/", user_farmer_page, name="user_farmer_page"),
     path('api/admin/consumer/', user_consumer_page, name='user_consumer_page'),
+    path('api/admin/admin-list/', admin_list, name='admin_list'),
     path('api/admin/top-rated-farmers/', top_rated_farmers, name='top_rated_farmers'),
+    path('api/admin/transaction-history/', get_transaction_history_admin, name='get_transaction_history_admin'),
+    path('api/admin/admin-user/', user_admin_page, name='user_admin_page'),
     path('api/user/address/', get_address, name='get_address'),
     path('api/user/payment-method/', update_payment_method, name='add_payment_method'),
     path('api/user/get-payment-method/', get_payment_method, name='get_payment_method'),
+
     
     # Rating
     path('api/farmer/rating/create/', RateFarmer.as_view(), name='rate_farmer'),

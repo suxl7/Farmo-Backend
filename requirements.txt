@@ -9,3 +9,4 @@ whitenoise>=6.6.0
 python-dotenv>=1.0.0
 numpy>=2.3.4
 opencv-python>=4.8.0
+Pillow>=12.1.1

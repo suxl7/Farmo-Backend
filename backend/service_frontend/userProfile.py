@@ -449,7 +449,6 @@ def get_user_profile_data(user):
         'about': profile.about,
         'dob': profile.dob,
         'sex': profile.sex,
-        'profile_picture_otp': "",
     }
 
 
@@ -459,7 +458,6 @@ def get_user_profile_data(user):
 def view_own_profile(request):
     """View own profile - accessible by any authenticated user"""
     userid = request.headers.get('user-id')
-    
     
     try:
         user = Users.objects.get(user_id=userid)
@@ -488,6 +486,8 @@ def view_user_profile_by_admin(request):
     try:
         user = Users.objects.get(user_id=userid)
         profile_data = get_user_profile_data(user)
+        rating = 3.5
+        profile_data['rating'] = rating
         return Response(profile_data, status=status.HTTP_200_OK)
             
     except Users.DoesNotExist:

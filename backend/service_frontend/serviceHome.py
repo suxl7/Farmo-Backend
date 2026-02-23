@@ -7,8 +7,6 @@ from rest_framework.permissions import AllowAny
 from django.db.models import Q, Sum, F
 from django.utils import timezone
  
-
-
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def dashboard_fullfillment(request):

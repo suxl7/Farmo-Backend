@@ -173,6 +173,7 @@ def get_order_detail(request):
         for i in range(len(products_id)):
             product_name[i] = Product.objects.filter(p_id=products_id[i]).values_list('name', flat=True)
         
+     
         order_status = order.order_status
         order_shipping_adderss = order.shipping_address
         order_expected_delivery_date = order.expected_delivery_date

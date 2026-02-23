@@ -52,72 +52,107 @@ def other_user_profile(request):
 ##########################################################################################
 @api_view(['POST'])
 @permission_classes([HasValidTokenForUser, IsAdmin])
-#@permission_classes([AllowAny])
 def search_user(request):
     """Protected view - requires valid token"""
     try:
-        search_term = request.data.get('search_data')
-        profile_status = request.data.get('profile_status')
-        verification = request.data.get('verification')
-        user_type = request.data.get('user_type')
-        district = request.data.get('district')
-        page = request.data.get('page', 1)
-        #print(f"Search Term:{search_term}--")
-    
+        search_term    = request.data.get('search_data', '').strip()
+        profile_status = request.data.get('profile_status', '')
+        verification   = request.data.get('verification', '')
+        user_type      = request.data.get('user_type', '')
+        district       = request.data.get('district', '')
+        page           = request.data.get('page', 1)
 
         query = Q()
 
-    # Apply filters conditionally
-        if search_term != '' or search_term != None:
+        # ── Search term ───────────────────────────────────────────────────────
+        # BUG FIX: original condition `!= '' or != None` is always True.
+        # Correct guard: only filter when the term is a non-empty string.
+        if search_term:
             query &= (
-                Q(user_id__icontains=search_term) | 
-                Q(profile_id__f_name__icontains=search_term) |
-                Q(profile_id__m_name__icontains=search_term) |
-                Q(profile_id__l_name__icontains=search_term))
+                Q(user_id__icontains=search_term)
+                | Q(profile_id__f_name__icontains=search_term)
+                | Q(profile_id__m_name__icontains=search_term)
+                | Q(profile_id__l_name__icontains=search_term)
+            )
 
-
-        if profile_status.upper() != 'ALL STATUS':
+        # ── Profile status ────────────────────────────────────────────────────
+        if profile_status and profile_status.upper() != 'ALL STATUS':
             query &= Q(profile_status__iexact=profile_status)
 
-        if verification.upper() != 'ALL VERIFICATION':
-            # Assuming you have a verification field in Users or UsersProfile
+        # ── Verification ──────────────────────────────────────────────────────
+        if verification and verification.upper() != 'ALL VERIFICATION':
             query &= Q(profile_id__verification__iexact=verification)
 
-        if user_type.lower() in ['farmer', 'verifiedfarmer']:
-            query &= (
-                Q(profile_id__user_type__iexact='Farmer') |
-                Q(profile_id__user_type__iexact='VerifiedFarmer')
-            )
-        elif user_type.lower() in ['consumer', 'verifiedconsumer']:
-            query &= (
-                Q(profile_id__user_type__iexact='Consumer') |
-                Q(profile_id__user_type__iexact='VerifiedConsumer')
-            )
+        # ── User type ─────────────────────────────────────────────────────────
+        if user_type:
+            ut = user_type.lower()
+            if ut in ['farmer', 'verifiedfarmer']:
+                query &= (
+                    Q(profile_id__user_type__iexact='Farmer')
+                    | Q(profile_id__user_type__iexact='VerifiedFarmer')
+                )
+            elif ut in ['consumer', 'verifiedconsumer']:
+                query &= (
+                    Q(profile_id__user_type__iexact='Consumer')
+                    | Q(profile_id__user_type__iexact='VerifiedConsumer')
+                )
 
-        if district.upper() != 'ANY DISTRICT':
-            # Example: search across multiple address fields
+        # ── District ──────────────────────────────────────────────────────────
+        if district and district.upper() != 'ANY DISTRICT':
             query &= Q(profile_id__district__icontains=district)
 
-         # Queryset with filters applied
-        users_qs = Users.objects.filter(query).order_by("user_id")
+        # ── Queryset ──────────────────────────────────────────────────────────
+        users_qs = (
+            Users.objects
+            .filter(query)
+            .select_related('profile_id')
+            .order_by('user_id')
+        )
 
-    # Pagination logic: 7 per page
-        page_size = 7
-        start = (page - 1) * page_size
-        end = start + page_size
-        users = users_qs[start:end]
+        # ── Pagination ────────────────────────────────────────────────────────
+        paginator = Paginator(users_qs, 7)
 
-        user_list = []
-        for user in users:
-            user_list.append({
-                'id': user.user_id,
-                'name': user.get_full_name_from_userModel(),
-                'contact': user.phone,
+        try:
+            page_obj = paginator.page(page)
+        except EmptyPage:
+            return Response({'detail': 'Page out of range.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # ── Ratings: batch in one query to avoid N+1 ─────────────────────────
+        user_ids = [u.user_id for u in page_obj.object_list]
+        ratings  = (
+            Rating.objects
+            .filter(rated_to__in=user_ids)
+            .values('rated_to')
+            .annotate(avg_score=Avg('score'))
+        )
+        rating_map = {r['rated_to']: round(r['avg_score'], 2) for r in ratings}
+
+        # ── Serialize ─────────────────────────────────────────────────────────
+        user_list = [
+            {
+                'id':       user.user_id,
+                'name':     user.get_full_name_from_userModel(),
+                'contact':  user.phone,
                 'location': f"{user.profile_id.municipal}, {user.profile_id.district}",
-                'rating': Rating.objects.filter(rated_to=user.user_id).aggregate(Avg('score'))['score__avg'] if Rating.objects.filter(rated_to=user.user_id).exists() else 0.0,
-                'status': user.profile_status,          
-            })
-        return Response({'users': user_list}, status=status.HTTP_200_OK)
+                'rating':   rating_map.get(user.user_id, 0.0),
+                'status':   user.profile_status,
+            }
+            for user in page_obj.object_list
+        ]
+
+        return Response(
+            {
+                'users':        user_list,
+                'total':        paginator.count,
+                'total_pages':  paginator.num_pages,
+                'current_page': page_obj.number,
+                'has_next':     page_obj.has_next(),
+                'has_previous': page_obj.has_previous(),
+            },
+            status=status.HTTP_200_OK,
+        )
+        ''''''
+
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 ##########################################################################################
@@ -189,6 +224,103 @@ def user_consumer_page(request):
 ##########################################################################################
 #                            User Consumer Page End
 ##########################################################################################
+##########################################################################################
+#                            Admin Page for Admin
+##########################################################################################
+from django.core.paginator import Paginator, EmptyPage
+
+PAGE_SIZE = 7
+
+@api_view(['POST'])
+@permission_classes([HasValidTokenForUser, IsAdmin])
+def admin_list(request):
+    search_term    = request.data.get('search_data', '')
+    profile_status = request.data.get('profile_status', '')      # 'PENDING' | 'ACTIVATED' | 'SUSPENDED' | 'DEACTIVATE'
+    user_type      = request.data.get('user_type', '')           # 'Admin' | 'SuperAdmin'
+    page           = request.data.get('page', 1)
+
+    # ── Base queryset ────────────────────────────────────────────────────────
+    qs = (
+        Users.objects
+        .filter(is_admin=True)   # profile_id is the FK → UsersProfile
+        .order_by('profile_id__f_name', 'profile_id__m_name', 'profile_id__l_name')
+    )
+
+    # ── Filters ──────────────────────────────────────────────────────────────
+    if profile_status.lower() != 'all status':
+        qs = qs.filter(profile_status=profile_status)
+
+    if user_type.lower() !='all admins':
+        qs = qs.filter(profile_id__user_type=user_type)
+
+    # ── Search (by name tokens or user_id) ───────────────────────────────────
+    if search_term != '' or search_term != None:
+        qs = qs.filter(
+            Q(user_id__icontains=search_term)
+            | Q(profile_id__f_name__icontains=search_term)
+            | Q(profile_id__m_name__icontains=search_term)
+            | Q(profile_id__l_name__icontains=search_term)
+            | Q(profile_id__email__icontains=search_term)
+            | Q(phone__icontains=search_term)
+        )
+
+    # ── Pagination ───────────────────────────────────────────────────────────
+    paginator = Paginator(qs, PAGE_SIZE)
+
+    try:
+        page_obj = paginator.page(page)
+    except EmptyPage:
+        return Response(
+            {'detail': 'Page out of range.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    # ── Serialize ────────────────────────────────────────────────────────────
+    admins = [
+        {
+            'user_type':   user.profile_id.user_type,
+            'id': user.user_id,
+            'name': user.get_full_name_from_userModel(),
+            'contact': user.phone,
+            'location': f"{user.profile_id.municipal}, {user.profile_id.district}",
+            'status': user.profile_status,  
+        }
+        for user in page_obj.object_list
+    ]
+
+    return Response(
+        {
+            'admins':       admins,
+            'total':        paginator.count,          # total matching records
+            'total_pages':  paginator.num_pages,
+            'current_page': page_obj.number,
+            'has_next':     page_obj.has_next(),
+            'has_previous': page_obj.has_previous(),
+        },
+        status=status.HTTP_200_OK,
+    )
+
+@api_view(['POST'])
+@permission_classes([HasValidTokenForUser, IsAdmin])
+def user_admin_page(request):
+    try:
+        admins_obj = Users.objects.filter(is_admin=True)
+    except Users.DoesNotExist:
+        return Response({'error': 'Admin not found'}, status=status.HTTP_404_NOT_FOUND)
+    #total_admin = admins.count()
+    total_admins = admins_obj.count()
+    super_admin = admins_obj.filter(prfile_id__user_type='SuperAdmin').count()
+    admin = admins_obj.filter(prfile_id__user_type='Admin').count()
+
+    return Response({
+        'total_admins': total_admins,
+        'no_of_admin': admin,
+        'no_of_super_admin': super_admin,
+        }, status=status.HTTP_200_OK)
+##########################################################################################
+#                            User Admin Page for Admin
+##########################################################################################
+
 ##########################################################################################
 #                            Wallet History Start
 ##########################################################################################

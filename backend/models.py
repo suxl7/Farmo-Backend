@@ -27,7 +27,7 @@ class UsersProfile(models.Model):
     phone02 = models.CharField(max_length=15, blank=True, null=True)
     email = models.CharField(max_length=100, blank=True, null=True)
     facebook = models.CharField(max_length=255, blank=True, null=True)
-    whatsapp = models.CharField(max_length=15, blank=True, null=True)
+    whatsapp = models.CharField(max_length=255, blank=True, null=True)
     join_date = models.DateTimeField(default=timezone.now)
     about = models.CharField(max_length=50, blank=True, null=True)
     payment_method = models.JSONField(max_length=50, default=list, blank=True)
@@ -254,9 +254,17 @@ class ProductRating(models.Model):
     ProductRating_id = models.AutoField( primary_key=True)
     p_id = models.ForeignKey(Product, on_delete=models.PROTECT)
     consumer_id = models.ForeignKey(Users, on_delete=models.PROTECT)
-    score = models.IntegerField(validators=[MinValueValidator(1),MaxValueValidator(10)])
+    score = models.DecimalField(
+        max_digits=3,       # Total digits (e.g., 5.0 is two, 10.0 is three)
+        decimal_places=1,   # Number of digits after the dot
+        validators=[
+            MinValueValidator(1.0),
+            MaxValueValidator(5.0)
+        ]
+    )
     comment = models.TextField()
-    date = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField()
+    last_update = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
         return f"ProductRating {self.ProductRating_id}: {self.score}"
@@ -266,13 +274,18 @@ class Rating(models.Model):
     """Rating model for farmer reviews by consumers"""
     rated_to = models.ForeignKey(Users, on_delete=models.PROTECT, related_name='rated_to')
     rated_by = models.ForeignKey(Users, on_delete=models.PROTECT, related_name='rated_by')
-    score = models.IntegerField(validators=[
-            MinValueValidator(1),
-            MaxValueValidator(10)
-        ])
+    score = models.DecimalField(
+        max_digits=3,       # Total digits (e.g., 5.0 is two, 10.0 is three)
+        decimal_places=1,   # Number of digits after the dot
+        validators=[
+            MinValueValidator(1.0),
+            MaxValueValidator(5.0)
+        ]
+    )
     comment = models.TextField()
     rated_for = models.CharField(max_length=50, default='Consumer') #
-    rated_update = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField()
+    last_update = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
         return f"Rating {self.Rate_id}: {self.score}"

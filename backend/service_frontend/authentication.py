@@ -63,13 +63,15 @@ def login(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        user_type = 'ADMIN'
+
         # Search user by userID or Phone and is_admin status
         user = Users.objects.get(Q(user_id=identifier) | Q(phone=identifier), is_admin=is_admin)
         if not is_admin and (user.profile_id.user_type.lower() == 'farmer' or user.profile_id.user_type.lower() == 'verifiedfarmer'):
             user_type = 'Farmer'
         elif not is_admin and (user.profile_id.user_type.lower() == 'consumer' or user.profile_id.user_type.lower() == 'verifiedconsumer'):
             user_type = 'Consumer'
+        else:
+            user_type = user.profile_id.user_type
         
         # Verify password
         if not user.check_password(password):

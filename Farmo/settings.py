@@ -161,18 +161,23 @@ REST_FRAMEWORK = {
         'backend.permissions.IsVerifiedConsumer',
         'backend.permissions.IsFarmerOrConsumer',
     ],
+
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
     ],
-    'DEFAULT_THROTTLE_CLASSES': [
+
+    # Disable throttling when DEBUG=True
+    'DEFAULT_THROTTLE_CLASSES': [] if DEBUG else [
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle'
     ],
-    'DEFAULT_THROTTLE_RATES': {
+
+    'DEFAULT_THROTTLE_RATES': {} if DEBUG else {
         'anon': '100/hour',
         'user': '1000/hour'
     },
 }
+
 
 # CORS Settings
 CORS_ALLOW_ALL_ORIGINS = True
