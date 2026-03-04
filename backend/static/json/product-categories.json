@@ -1,29 +1,134 @@
 [
-  {"key": "animal-feed", "label": "Animal Feed"},
-  {"key": "beverage", "label": "Beverage"},
-  {"key": "dairy", "label": "Dairy"},
-  {"key": "dry-fruit-nut", "label": "Dry Fruit & Nut"},
-  {"key": "egg", "label": "Egg"},
-  {"key": "fiber", "label": "Fiber"},
-  {"key": "fish", "label": "Fish"},
-  {"key": "flour", "label": "Flour"},
-  {"key": "flower", "label": "Flower"},
-  {"key": "fruit", "label": "Fruit"},
-  {"key": "general", "label": "General"},
-  {"key": "grain", "label": "Grain"},
-  {"key": "legume", "label": "Legume"},
-  {"key": "livestock-poultry", "label": "Livestock & Poultry"},
-  {"key": "meat", "label": "Meat"},
-  {"key": "medicinal-herb", "label": "Medicinal Herb"},
-  {"key": "misc", "label": "Miscellaneous"},
-  {"key": "mushroom", "label": "Mushroom"},
-  {"key": "oil", "label": "Oil"},
-  {"key": "processed-food", "label": "Processed Food"},
-  {"key": "salt", "label": "Salt"},
-  {"key": "spice", "label": "Spice"},
-  {"key": "sweetener", "label": "Sweetener"},
-  {"key": "timber", "label": "Timber"},
-  {"key": "tobacco", "label": "Tobacco"},
-  {"key": "tool-equipment", "label": "Tool & Equipment"},
-  {"key": "vegetable", "label": "Vegetable"}
+  {
+    "key": "animal-feed",
+    "label": "Animal Feed"
+  },
+  {
+    "key": "beverage",
+    "label": "Beverage"
+  },
+  {
+    "key": "dairy",
+    "label": "Dairy"
+  },
+  {
+    "key": "dry-fruit-nut",
+    "label": "Dry Fruit & Nut"
+  },
+  {
+    "key": "egg",
+    "label": "Egg"
+  },
+  {
+    "key": "fiber",
+    "label": "Fiber"
+  },
+  {
+    "key": "fish",
+    "label": "Fish"
+  },
+  {
+    "key": "flour",
+    "label": "Flour"
+  },
+  {
+    "key": "flower",
+    "label": "Flower"
+  },
+  {
+    "key": "fruit",
+    "label": "Fruit"
+  },
+  {
+    "key": "general",
+    "label": "General"
+  },
+  {
+    "key": "grain",
+    "label": "Grain"
+  },
+  {
+    "key": "legume",
+    "label": "Legume"
+  },
+  {
+    "key": "livestock-poultry",
+    "label": "Livestock & Poultry"
+  },
+  {
+    "key": "meat",
+    "label": "Meat"
+  },
+  {
+    "key": "medicinal-herb",
+    "label": "Medicinal Herb"
+  },
+  {
+    "key": "misc",
+    "label": "Miscellaneous"
+  },
+  {
+    "key": "mushroom",
+    "label": "Mushroom"
+  },
+  {
+    "key": "oil",
+    "label": "Oil"
+  },
+  {
+    "key": "processed-food",
+    "label": "Processed Food"
+  },
+  {
+    "key": "salt",
+    "label": "Salt"
+  },
+  {
+    "key": "spice",
+    "label": "Spice"
+  },
+  {
+    "key": "sweetener",
+    "label": "Sweetener"
+  },
+  {
+    "key": "timber",
+    "label": "Timber"
+  },
+  {
+    "key": "tobacco",
+    "label": "Tobacco"
+  },
+  {
+    "key": "tool-equipment",
+    "label": "Tool & Equipment"
+  },
+  {
+    "key": "vegetable",
+    "label": "Vegetable"
+  },
+  {
+    "key": "tea",
+    "label": "tea"
+  },
+  {
+    "key": "bean",
+    "label": "bean"
+  },
+  {
+    "key": "chamal",
+    "label": "chamal"
+  },
+  {
+    "key": "milk",
+    "label": "milk"
+  },
+  {
+    "key": "fruits",
+    "label": "fruits"
+  },
+  {
+    "key": "mil",
+    "label": "mil"
+  }
 ]

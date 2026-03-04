@@ -29,7 +29,7 @@ class UsersProfile(models.Model):
     facebook = models.CharField(max_length=255, blank=True, null=True)
     whatsapp = models.CharField(max_length=255, blank=True, null=True)
     join_date = models.DateTimeField(default=timezone.now)
-    about = models.CharField(max_length=50, blank=True, null=True)
+    about = models.CharField(max_length=500, blank=True, null=True)
     payment_method = models.JSONField(max_length=50, default=list, blank=True)
 
     @property
@@ -143,7 +143,7 @@ class Users(models.Model):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(profile_status__in=['PENDING', 'ACTIVATED', 'SUSPENDED', 'DEACTIVATE']),
+                condition=models.Q(profile_status__in=['PENDING', 'ACTIVATED', 'SUSPENDED', 'DEACTIVATED']),
                 name='valid_profile_status'
             )
         ]
@@ -195,9 +195,10 @@ class Product(models.Model):
     p_id = models.CharField(primary_key=True, max_length=100)
     user_id = models.ForeignKey(Users, on_delete=models.PROTECT)
     name = models.CharField(max_length=255)
-    category = models.CharField(max_length=100)
+    product_type = models.CharField(max_length=300, blank=True, null=True)
     is_organic = models.BooleanField(default=False)
-    quantity_available = models.IntegerField()
+    quantity_available = models.DecimalField(decimal_places=2, max_digits=10, default=0)
+    product_unit = models.CharField(max_length=50, default='KG')
     cost_per_unit = models.DecimalField(max_digits=10, decimal_places=2)
     discount_type = models.CharField(max_length=50, blank=True, null=True)
     discount = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
@@ -208,30 +209,32 @@ class Product(models.Model):
     delivery_option = models.CharField(max_length=100, default='Not-Available')
     product_status = models.CharField(max_length=100, default='Available')
     media_url = models.JSONField(blank=True, null=True)
+    keywords = models.JSONField(blank=True, null=True)
+
 
     @classmethod
-    def create_product(cls, user, name, category, is_organic, discount_type=None, discount=None,
-                       quantity_available=0, cost_per_unit=0, produced_date=None, expiry_Date=None,
-                       description=None, delivery_option="Not-Available"):
-        """Create a new product"""
+    def create_product(cls, user, name, product_type, is_organic, discount_type=None, discount=None, product_unit='kg',quantity_available=0, cost_per_unit=0, produced_date=None, expiry_Date=None,
+        description=None, delivery_option="Not-Available", keywords=None):
         pid = user.user_id + '-P-' + secrets.token_urlsafe(10)
         product = cls.objects.create(
-            p_id=pid,
-            user_id=user,
-            media_url={},  # empty JSON
-            name=name,
-            category=category,
-            is_organic=is_organic,
-            quantity_available=quantity_available,
-            cost_per_unit=cost_per_unit,
-            discount_type=discount_type,
-            discount=discount,
-            registered_at=timezone.now(),
-            produced_date=produced_date,
-            expiry_Date=expiry_Date,
-            description=description,
-            delivery_option="Not-Available",
-            product_status='Available'
+        p_id=pid,
+        user_id=user,
+        media_url={},
+        name=name,
+        product_unit=product_unit,
+        product_type=product_type,   # ✅ correct field name
+        is_organic=is_organic,
+        quantity_available=quantity_available,
+        cost_per_unit=cost_per_unit,
+        discount_type=discount_type,
+        discount=discount,
+        registered_at=timezone.now(),
+        produced_date=produced_date,
+        expiry_Date=expiry_Date,
+        description=description,
+        delivery_option=delivery_option,
+        product_status='Available',
+        keywords=keywords
         )
         return product
 
@@ -242,8 +245,12 @@ class Product(models.Model):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(delivery_option__in=['Not-Available', 'Available']) & models.Q(product_status__in=['Available', 'Sold', 'Expired']),
+                condition=models.Q(delivery_option__in=['Not-Available', 'Available']) & models.Q(product_status__in=['Available', 'Sold', 'Expired','Deleted']),
                 name='valid_product_status_delivery_option'
+            ),
+            models.CheckConstraint(
+                condition=models.Q(discount_type__in=['', 'None','Percentage', 'Fixed', 'Flat']),
+                name='valid_discount_type'
             )
         ]
 
@@ -312,7 +319,7 @@ class Verification(models.Model):
     submission_date = models.DateTimeField(default=timezone.now)
     approved_date = models.DateTimeField(blank=True, null=True)
     approved_by = models.CharField(max_length=50, blank=True, null=True)
-
+    comment = models.TextField(blank=True, null=True)
 
 
     def __str__(self):
@@ -321,7 +328,7 @@ class Verification(models.Model):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(status__in=['PENDING', 'VERIFIED', 'REJECTED', 'UNVERIFIED']),
+                condition=models.Q(status__in=['PENDING', 'VERIFIED', 'REJECTED']),
                 name='valid_status'
             )
         ]
@@ -330,30 +337,39 @@ class Verification(models.Model):
 class OrderRequest(models.Model):
     """OrderRequest model for customer orders"""
     order_id = models.CharField(max_length=50, primary_key=True)
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, null=True, blank=True, db_column='p_id')
     consumer_id = models.ForeignKey(Users, on_delete=models.PROTECT)
     ordered_date = models.DateTimeField(default=timezone.now)
     total_cost = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     order_status = models.CharField(max_length=20, default='PENDING') # Accepted, Rejected
     shipping_address = models.TextField(blank=True, null=True)
     expected_delivery_date = models.DateField(blank=True, null=True)
+    message = models.JSONField(blank=True, null=True)
     ORDER_OTP = models.CharField(max_length=6, blank=True, null=True)
+    ordered_quantity = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    latest_update = models.DateTimeField(default=timezone.now, null=True, blank=True)
+    payment_method = models.CharField(max_length=50, blank=True, null=True)
+    
 
-    @property
-    def get_pid_from_orderid(self):
-        return OrdProdLink.objects.filter(order_id=self.order_id).values_list('p_id')
 
     @classmethod
-    def create_order(cls, consumer_id, total_cost, shipping_address, expected_delivery_date):
+    def create_order(cls,order_id, consumer_id, product, total_cost, shipping_address, expected_delivery_date, message, quantity,payment_method):
         obj = cls.objects.create(
+            order_id=order_id,
             consumer_id=consumer_id,
+            product=product,
             ordered_date=timezone.now(),
             total_cost=total_cost,
             order_status='PENDING',
             shipping_address=shipping_address,
             expected_delivery_date=expected_delivery_date,
-            ORDER_OTP=secrets.token_hex(6).upper()
+            ORDER_OTP=str(secrets.token_hex(3).upper()),
+            message=message,
+            ordered_quantity=quantity,
+            latest_update=timezone.now(),
+            payment_method=payment_method
         )
-        return obj.order_id
+        return obj
 
 
 
@@ -363,40 +379,20 @@ class OrderRequest(models.Model):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(order_status__in=['PENDING', 'ACCEPTED', 'REJECTED']),
+                condition=models.Q(order_status__in=['PENDING', 'ACCEPTED', 'REJECTED', 'DELIVERED']),
                 name='valid_order_status'
+            ),
+            models.CheckConstraint(
+                condition=models.Q(payment_method__in=['WALLET', 'CashOnDelivery']),
+                name= 'valid_payment_method_for_order'
             )
+
         ]
-
-
-class OrdProdLink(models.Model):
-    """OrdProdLink model linking orders to products with quantities"""
-    order_id = models.ForeignKey(OrderRequest, on_delete=models.PROTECT, db_index=True)
-    p_id = models.ForeignKey(Product, on_delete=models.PROTECT,db_index=True)
-    quantity = models.IntegerField()
-    cost_per_unit = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-
-    @classmethod
-    def create_OrderProdLink(cls, order_id, p_id, quantity, cost_per_unit):
-        cls.objects.create(
-            order_id=order_id,
-            p_id=p_id,
-            quantity=quantity,
-            cost_per_unit=cost_per_unit
-        )
-        return True if cls.objects.filter(order_id=order_id, p_id=p_id).exists() else False
-
-    def __str__(self):
-        return f"{self.quantity} x Product {self.P_id} in order {self.order_id}"
-
-
-    class Meta:
-        unique_together = ('order_id', 'p_id')
 
 
 class Transaction(models.Model):
     transaction_id = models.CharField(primary_key=True, editable=False)
-    order = models.ForeignKey(OrderRequest, on_delete=models.PROTECT, db_index=True)
+    order = models.ForeignKey(OrderRequest, on_delete=models.PROTECT, db_index=True, unique=True)
     transaction_to = models.ForeignKey(Users, on_delete=models.PROTECT, related_name="transaction_to") # Receiver
     payment_method = models.CharField(max_length=50)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
@@ -408,8 +404,10 @@ class Transaction(models.Model):
     updated_at = models.DateTimeField(null=True, blank=True)
     initiated_by = models.ForeignKey(Users, on_delete=models.PROTECT, related_name="initiator") # Sender
 
+
     def __str__(self):
         return f'Transaction {self.transaction_id}: {self.status}'
+
 
     class Meta:
         constraints = [
@@ -420,12 +418,8 @@ class Transaction(models.Model):
             models.CheckConstraint(
                 condition=models.Q(payment_method__in=['WALLET', 'QR']),
                 name='valid_payment_method'
-            ),
-            models.CheckConstraint(
-                condition=models.Q(initiated_by__in=['CUSTOMER', 'ADMIN']),
-                name='valid_initiated_by'
             )
-        ]
+        ]    
 
 
 
@@ -673,7 +667,7 @@ class FarmProducts(models.Model):
         ]
 
 
-class TrackUser(models.Model):
+class ProductScore(models.Model):
     user_id = models.ForeignKey(Users, on_delete=models.CASCADE)
     farmProduct = models.ForeignKey(FarmProducts, on_delete=models.CASCADE, null=True, blank=True, db_index=True)
     product_catagory = models.CharField(max_length=50, blank=True, null=True, db_index=True)

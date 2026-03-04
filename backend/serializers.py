@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from .models import (
     Users, UsersProfile, Wallet, Transaction, Product,
-    ProductRating, Rating, Verification, OrderRequest, OrdProdLink, Tokens, UserActivity, Connections,  OTP, FarmProducts
+    ProductRating, Rating, Verification, OrderRequest, Tokens, UserActivity, Connections,  OTP, FarmProducts
 )
 
 
@@ -87,16 +87,9 @@ class VerificationSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class OrdProdLinkSerializer(serializers.ModelSerializer):
-    """Serializer for OrdProdLink model"""
-    class Meta:
-        model = OrdProdLink
-        fields = '__all__'
-
-
 class OrderRequestSerializer(serializers.ModelSerializer):
     """Serializer for OrderRequest model with nested order items"""
-    order_items = OrdProdLinkSerializer(many=True, read_only=True)
+    order_items = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
     
     class Meta:
         model = OrderRequest

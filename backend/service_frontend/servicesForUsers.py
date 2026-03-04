@@ -134,7 +134,7 @@ def search_user(request):
                 'name':     user.get_full_name_from_userModel(),
                 'contact':  user.phone,
                 'location': f"{user.profile_id.municipal}, {user.profile_id.district}",
-                'rating':   rating_map.get(user.user_id, 0.0),
+                'rating':   round(rating_map.get(user.user_id) if user.user_id in rating_map else 0.0,1),
                 'status':   user.profile_status,
             }
             for user in page_obj.object_list
@@ -232,7 +232,8 @@ from django.core.paginator import Paginator, EmptyPage
 PAGE_SIZE = 7
 
 @api_view(['POST'])
-@permission_classes([HasValidTokenForUser, IsAdmin])
+# @permission_classes([HasValidTokenForUser, IsAdmin])
+@permission_classes([AllowAny])
 def admin_list(request):
     search_term    = request.data.get('search_data', '')
     profile_status = request.data.get('profile_status', '')      # 'PENDING' | 'ACTIVATED' | 'SUSPENDED' | 'DEACTIVATE'
@@ -247,7 +248,7 @@ def admin_list(request):
     )
 
     # ── Filters ──────────────────────────────────────────────────────────────
-    if profile_status.lower() != 'all status':
+    if profile_status not in ['all status', '', 'All Status', 'All', 'all']:
         qs = qs.filter(profile_status=profile_status)
 
     if user_type.lower() != 'all admins':
@@ -301,22 +302,20 @@ def admin_list(request):
     )
 
 @api_view(['POST'])
-@permission_classes([HasValidTokenForUser, IsAdmin])
+#@permission_classes([HasValidTokenForUser, IsAdmin])
+@permission_classes([AllowAny])
 def user_admin_page(request):
-    try:
-        admins_obj = Users.objects.filter(is_admin=True)
-    except Users.DoesNotExist:
-        return Response({'error': 'Admin not found'}, status=status.HTTP_404_NOT_FOUND)
-    #total_admin = admins.count()
+    admins_obj = Users.objects.filter(is_admin=True)
+
     total_admins = admins_obj.count()
-    super_admin = admins_obj.filter(prfile_id__user_type='SuperAdmin').count()
-    admin = admins_obj.filter(prfile_id__user_type='Admin').count()
+    super_admin  = admins_obj.filter(profile_id__user_type='SuperAdmin').count()
+    admin        = admins_obj.filter(profile_id__user_type='Admin').count()
 
     return Response({
-        'total_admins': total_admins,
-        'no_of_admin': admin,
+        'total_admins':     total_admins,
+        'no_of_admin':      admin,
         'no_of_super_admin': super_admin,
-        }, status=status.HTTP_200_OK)
+    }, status=status.HTTP_200_OK)
 ##########################################################################################
 #                            User Admin Page for Admin
 ##########################################################################################
@@ -375,6 +374,93 @@ def get_transaction_history_user(request):
     if transcation_history is None:
         return Response({'error': 'Transaction not found'}, status=status.HTTP_404_NOT_FOUND)
     return Response(transcation_history, status=status.HTTP_200_OK)
+
+##########################################################################################
+#                            Wallet History End
+##########################################################################################
+
+##########################################################################################
+#                            Acction Status Action Start
+##########################################################################################
+@api_view(['POST'])
+@permission_classes([HasValidTokenForUser, IsAdmin])
+#@permission_classes([AllowAny])
+def action_status_action(request):
+    user_id = request.data.get('target_user_id')
+    action = request.data.get('action') # suspend, activate, or deactivate
+    
+    # Add .lower() here to catch uppercase inputs early, just to be safe!
+    if not action:
+        return Response({'error': 'Action is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+    action_lower = action.lower()
+
+    try:
+        # ADD 'deactivate' to this list
+        if action_lower not in ['suspend', 'activate', 'deactivate']:
+            return Response({'error': 'Invalid Action For User'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        user = Users.objects.get(user_id=user_id)
+        
+        if action_lower == 'suspend':
+            user.profile_status = 'SUSPENDED'
+        elif action_lower == 'activate':
+            user.profile_status = 'ACTIVATED'
+        elif action_lower == 'deactivate':
+            user.profile_status = 'DEACTIVATED'
+            
+        user.save()
+        return Response({}, status=status.HTTP_200_OK)
+        
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+##########################################################################################
+#                            Acction Status Action End
+##########################################################################################
+##########################################################################################
+#                            Wallet History End
+##########################################################################################
+##########################################################################################
+#                            Wallet History End
+##########################################################################################
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny, IsAdmin])
+def update_admin_profile(request):
+    from backend.utils.whatsapp import normalize_whatsapp
+    userid = request.data.get('user_id')
+    data = request.data
+
+    phone = data.get("phone")
+    phone2 = data.get("phone2")
+    facebook = data.get("facebook")
+    whatsapp = data.get("whatsapp")
+    email = data.get("email")
+
+   
+    if not email or not phone :
+        return Response({"error": "Required fields are missing."}, status=status.HTTP_400_BAD_REQUEST)
+    
+    
+    try:
+        user = Users.objects.get(user_id=userid, is_admin=True)
+        profile = UsersProfile.objects.get(profile_id=user.profile_id.profile_id)
+        profile.phone02 = phone2
+        profile.facebook = facebook
+        profile.whatsapp = normalize_whatsapp(whatsapp) if whatsapp else None
+        profile.email = email
+        profile.save()
+        user.phone = phone
+    
+        user.save()
+        return Response({},status= status.HTTP_200_OK)
+    except Users.DoesNotExist:
+        return Response({
+            'error': 'User not found.' }, status=status.HTTP_404_NOT_FOUND)
+    except UsersProfile.DoesNotExist:
+        return Response({
+            'error': 'Profile not found.' }, status=status.HTTP_404_NOT_FOUND)
 
 ##########################################################################################
 #                            Wallet History End

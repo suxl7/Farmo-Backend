@@ -3,18 +3,19 @@ from django.core.exceptions import ValidationError
 import re
 
 def validate_nepali_phone(value):
-    """Validate Nepali phone number (10 digits starting with 9)"""
+    """Validate Nepali phone number (exactly 10 digits starting with 9)."""
     if not value:
         return
     
     # Remove spaces, dashes, plus signs
-    phone = re.sub(r'[\s\-\+]', '', value)
+    #phone = re.sub(r'[\s\-\+]', '', value)
     
-    # Check if it's 10 digits and starts with 9
-    if not re.match(r'^9\d{9}$', phone):
+    # Must be exactly 10 digits and start with 9
+    if not re.fullmatch(r'9\d{9}', value):
         raise ValidationError(
-            'Phone number must be 10 digits starting with 9 (e.g., 9841234567).'
+            'Phone number must be exactly 10 digits starting with 9 (e.g., 9841234567).'
         )
+
 
 def validate_email_format(value):
     """Validate email format"""
@@ -92,15 +93,44 @@ def validate_last_name(value):
     validate_name(value, "Last name")
 
 def validate_whatsapp(value):
-    """Validate WhatsApp number (can be international)"""
+    """
+    Validate WhatsApp number (Nepal only: starts with 97 or 98, or wa.me link).
+    Normalize plain numbers into wa.me link.
+    """
     if not value:
+        return None
+
+    # Pattern for wa.me link (Nepal numbers starting with 97 or 98)
+    wa_link_pattern = r"^https?://wa\.me/\+9779[78]\d{7}$"
+    # Pattern for direct Nepali number starting with 97 or 98 (10 digits)
+    phone_pattern = r"^9[78]\d{8}$"
+
+    if re.match(wa_link_pattern, value):
         return
-    
-    # Remove spaces, dashes, plus signs
-    phone = re.sub(r'[\s\-\+]', '', value)
-    
-    # Check if it's between 10-15 digits
-    if not re.match(r'^\d{10,15}$', phone):
-        raise ValidationError(
-            'WhatsApp number must be 10-15 digits.'
-        )
+    elif re.match(phone_pattern, value):
+        return
+    else:
+        raise ValidationError("WhatsApp must be a valid number (starting with 97 or 98) or wa.me link.")
+
+
+def validate_password(password):
+        
+        if not password:
+           return None
+        # Check minimum length
+        if len(password) < 8:
+            raise ValidationError("Password must be at least 8 characters long.")
+
+        # Check for at least one digit
+        if not re.search(r"\d", password):
+            raise ValidationError("Password must contain at least one number.")
+
+        # Check for at least one symbol (non-alphanumeric)
+        if not re.search(r"[^A-Za-z0-9]", password):
+            raise ValidationError("Password must contain at least one symbol.")
+        
+        return
+
+
+
+

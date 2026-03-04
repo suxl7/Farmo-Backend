@@ -3,14 +3,20 @@ from rest_framework.permissions import AllowAny
 from backend.permissions import HasValidTokenForUser, IsAdmin
 from rest_framework.response import Response
 from rest_framework import status
-from backend.models import Users, UsersProfile, UserActivity, Verification as Ver
+from backend.models import Users, UsersProfile, UserActivity, Verification as Ver, Rating, Wallet
 from backend.serializers import VerificationSerializer as VS
 import secrets
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from backend.utils.media_handler import FileManager
-from backend.utils.validators import validate_email_format, validate_nepali_phone , validate_facebook_url, validate_whatsapp, validate_first_name, validate_last_name, validate_middle_name
-from django.contrib.auth.password_validation import validate_password
+from backend.utils.validators import (validate_email_format, 
+                                      validate_nepali_phone , 
+                                      validate_facebook_url, 
+                                      validate_whatsapp, 
+                                      validate_first_name, 
+                                      validate_last_name, 
+                                      validate_middle_name, 
+                                      validate_password)
 from django.core.exceptions import ValidationError
 from rest_framework.views import APIView
 
@@ -47,23 +53,23 @@ def register(request):
     
     user_type = request.data.get('user_type')
     
-    profile_picture = request.FILES.get('profile_picture', None)
+    profile_picture =  None
 
     #join_date = timezone.now()
 
     from django.utils.dateparse import parse_date
     dob = parse_date(dob_str)
-   
+    password = request.data.get('password')
     # Check Password validation
-    if created_by in ['SuperAdmin', 'Admin'] and not user_id:
-        password = get_random_string(length=8)
-    else:
-        password = request.data.get('password')
-        try:
-            validate_password(password)
-        except ValidationError as e:
-            return Response({
-                'error': ' '.join(e.messages)  # Joins with space
+    # if created_by in ['SuperAdmin', 'Admin'] and not user_id:
+    #     password = get_random_string(length=8)
+    # else:
+        
+    try:
+        validate_password(password)
+    except ValidationError as e:
+        return Response({
+                'error': ''.join(e.messages)  # Joins with space
             }, status=status.HTTP_400_BAD_REQUEST)
         
     
@@ -85,10 +91,11 @@ def register(request):
         if facebook is not None or facebook != '':
             validate_facebook_url(facebook)
         if whatsapp is not None or whatsapp != '':
-            validate_whatsapp(whatsapp)
+            validate_nepali_phone(whatsapp)
+            whatsapp = 'https://wa.me/+977' + str(whatsapp)
     except ValidationError as e:
         return Response({
-            'error': ' '.join(e.messages)  # Joins with space
+            'error': e.messages  # Joins with space
         }, status=status.HTTP_400_BAD_REQUEST)
 
     if Users.objects.filter(user_id=user_id).exists():
@@ -128,7 +135,9 @@ def register(request):
 
     profile_picture_url = result['file_url'] if profile_picture else None
 
-
+    # if created_by in ['Admin', 'SuperAdmin']:
+        # UserActivity.create_activity(user=user, activity="SIGNUP", discription="By Admin.")
+    
     profile = UsersProfile.create_profile(
         profile_url=profile_picture_url or None,
         f_name=f_name,
@@ -350,7 +359,7 @@ def get_payment_method(request):
 ##########################################################################################
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([HasValidTokenForUser])
 def change_password(request):
     userid = request.headers.get('user-id')
     old_password = request.data.get('current_password')
@@ -422,6 +431,7 @@ def save_profile_file(user_id, new_picture):
 import base64
 import mimetypes
 from django.conf import settings
+from django.db.models import Avg
 
 def get_user_profile_data(user):
     """
@@ -486,14 +496,163 @@ def view_user_profile_by_admin(request):
     try:
         user = Users.objects.get(user_id=userid)
         profile_data = get_user_profile_data(user)
-        rating = 3.5
+
+        rating = Rating.objects.filter(rated_to=userid).aggregate(avg_score=Avg('score'))['avg_score']
+        if rating is None:
+            rating = 0.0
+        else:
+            rating = round(rating, 1)
+
         profile_data['rating'] = rating
+        wallet_balance = Wallet.objects.get(user_id=user).balance
+        profile_data['wallet_balance'] = wallet_balance
         return Response(profile_data, status=status.HTTP_200_OK)
             
+
     except Users.DoesNotExist:
         return Response({
             'error': 'User not found.'
         }, status=status.HTTP_404_NOT_FOUND)
+    except Rating.DoesNotExist:
+        return Response({
+            'error': 'Rating not found.'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
 ##########################################################################################
 #                            View Profile Picture End
+##########################################################################################
+##########################################################################################
+#                            Update own Profile Details Start
+##########################################################################################
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def update_profile(request):
+    from backend.utils.whatsapp import normalize_whatsapp
+
+    userid = request.headers.get('user-id')
+    data = request.data
+    f_name = data.get("f_name")
+    m_name = data.get("m_name")
+    l_name = data.get("l_name")
+    phone = data.get("phone")
+    phone2 = data.get("phone2")
+    facebook = data.get("facebook")
+    whatsapp = data.get("whatsapp")
+    province = data.get("province")
+    district = data.get("district")
+    municipal = data.get("municipal")
+    ward = data.get("ward")
+    tole = data.get("tole")
+    about = data.get("about")
+    dob = data.get("dob")
+    sex = data.get("sex")
+
+    if not f_name or not l_name or not phone or not province or not district or not municipal or not ward or not tole or not dob or not sex:
+        return Response({"error": "Required fields are missing."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+    try:
+        user = Users.objects.get(user_id=userid)
+        profile = UsersProfile.objects.get(profile_id=user.profile_id.profile_id)
+        profile.f_name = f_name
+        profile.m_name = m_name
+        profile.l_name = l_name
+        profile.phone02 = phone2
+        profile.facebook = facebook
+        profile.whatsapp = normalize_whatsapp(whatsapp) if whatsapp else None
+        profile.province = province
+        profile.district = district
+        profile.municipal = municipal
+        profile.ward = ward
+        profile.tole = tole
+        profile.about = about
+        profile.dob = dob
+        profile.sex = sex
+        profile.save()
+        user.phone = phone
+        user.save()
+
+        return Response({},status= status.HTTP_200_OK)
+    except Users.DoesNotExist:
+        return Response({
+            'error': 'User not found.' }, status=status.HTTP_404_NOT_FOUND)
+    except UsersProfile.DoesNotExist:
+        return Response({
+            'error': 'Profile not found.' }, status=status.HTTP_404_NOT_FOUND)
+    
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def update_user_profile(request):
+    from backend.utils.whatsapp import normalize_whatsapp
+
+    userid = request.data.get('user_id')
+    data = request.data
+    f_name = data.get("f_name")
+    m_name = data.get("m_name")
+    l_name = data.get("l_name")
+    phone = data.get("phone")
+    phone2 = data.get("phone2")
+    facebook = data.get("facebook")
+    whatsapp = data.get("whatsapp")
+    province = data.get("province")
+    district = data.get("district")
+    municipal = data.get("municipal")
+    ward = data.get("ward")
+    tole = data.get("tole")
+    about = data.get("about")
+    dob = data.get("dob")
+    sex = data.get("sex")
+
+    if not f_name or not l_name or not phone or not province or not district or not municipal or not ward or not tole or not dob or not sex:
+        return Response({"error": "Required fields are missing."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+    try:
+        user = Users.objects.get(user_id=userid)
+        profile = UsersProfile.objects.get(profile_id=user.profile_id.profile_id)
+        profile.f_name = f_name
+        profile.m_name = m_name
+        profile.l_name = l_name
+        profile.phone02 = phone2
+        profile.facebook = facebook
+        profile.whatsapp = normalize_whatsapp(whatsapp) if whatsapp else None
+        profile.province = province
+        profile.district = district
+        profile.municipal = municipal
+        profile.ward = ward
+        profile.tole = tole
+        profile.about = about
+        profile.dob = dob
+        profile.sex = sex
+        profile.save()
+        user.phone = phone
+        user.save()
+
+        return Response({},status= status.HTTP_200_OK)
+    except Users.DoesNotExist:
+        return Response({
+            'error': 'User not found.' }, status=status.HTTP_404_NOT_FOUND)
+    except UsersProfile.DoesNotExist:
+        return Response({
+            'error': 'Profile not found.' }, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def check_password(request):
+    userid = request.headers.get('user-id')
+    password = request.data.get('password')
+    try:
+        user = Users.objects.get(user_id=userid)
+        if user.check_password(password):
+            return Response({}, status=status.HTTP_200_OK)
+        else:
+            return Response({}, status=status.HTTP_400_BAD_REQUEST)
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+##########################################################################################
+#                            Update own Profile Details End
 ##########################################################################################

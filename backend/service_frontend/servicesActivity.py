@@ -58,18 +58,20 @@ def get_online_status(request):
 @permission_classes([HasValidTokenForUser])
 def get_address(request):
     """Get the address for an order"""
-    user = request.headers.get('user-id')
-    address_of = request.data.get('address_of')
-    user_id = request.data.get('userid') if request.data.get('userid') else None
+    userid = request.data.get('user-id')
+    
 
     try:
-        if address_of.lower() == 'consumer':
-            address = UsersProfile.objects.get(user_id=user).get_Address()
-        elif address_of.lower() in  ['farmer', 'seller', 'admin']:
-            address = UsersProfile.objects.get(user_id=user_id).get_Address()
+        user = Users.objects.get(user_id=userid).profile_id
+        
+        province = user.province
+        district = user.district
+        municipal = user.municipal
+        ward = user.ward
+        tole = user.tole
         
 
-        return Response({'address': address}, status=status.HTTP_200_OK)
+        return Response({'province': province, 'district': district, 'municipal': municipal, 'ward': ward, 'tole': tole}, status=status.HTTP_200_OK)
     
     except ObjectDoesNotExist:
         return Response({'error': 'User not found!'}, status=status.HTTP_404_NOT_FOUND)

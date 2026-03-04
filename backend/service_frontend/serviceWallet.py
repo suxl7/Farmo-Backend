@@ -15,8 +15,6 @@ def wallet_req(user_id):
     user = Users.objects.get(user_id=user_id)
     try:
         wallet = Wallet.objects.get(user_id=user)
-        if not wallet.is_active:
-            return {'error': 'Wallet is not active'}, status.HTTP_400_BAD_REQUEST
         if user.profile_id.user_type in ['Farmer', 'VerifiedFarmer']:
             resp = {
                 'wallet_id': wallet.wallet_id,
@@ -44,8 +42,12 @@ def wallet_req(user_id):
 #@permission_classes([HasValidTokenForUser])
 def req_own_wallet(request):
     user_id = request.headers.get('user-id')
-    response, status = wallet_req(user_id)
-    return Response(response, status=status)
+
+    wallet = Wallet.objects.filter(user_id=user_id)
+    if not wallet.is_active:
+        return Response({'error': 'Wallet is not active. Please, change your wallet pin.'}, status=status.HTTP_304_NOT_MODIFIED)
+    response, s = wallet_req(user_id)
+    return Response(response, status=s)
 
 ##########################################################################################
 #                            req_own_wallet End
@@ -71,7 +73,7 @@ def req_wallet_by_admin(request):
 ##########################################################################################
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([AllowAny, IsFarmerOrConsumer])
 #@permission_classes([HasValidTokenForUser])
 def change_wallet_pin(request):
     user_id = request.headers.get('user-id')
@@ -88,6 +90,12 @@ def change_wallet_pin(request):
             if not user.check_password(password):
                 return Response({'error': 'Incorrect Password'}, status=status.HTTP_400_BAD_REQUEST)
         else:
+            if old_pin is None:
+                return Response({'error': 'Old pin is required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            if old_pin == new_pin:
+                return Response({'error': 'New pin cannot be the same as the old pin'}, status=status.HTTP_400_BAD_REQUEST)
+
             if not wallet.check_pin(old_pin):
                 return Response({'error': 'Incorrect Old pin'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -106,7 +114,7 @@ def change_wallet_pin(request):
 #                            verify_wallet_pin Start
 ##########################################################################################
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([AllowAny, IsFarmerOrConsumer])
 #@permission_classes([HasValidTokenForUser])
 def verify_wallet_pin(request):
     """Verify wallet PIN for authenticated user before transactions"""
@@ -140,7 +148,7 @@ def verify_wallet_pin(request):
 #                            forget_wallet_pin End
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([AllowAny, IsFarmerOrConsumer])
 #@permission_classes([HasValidTokenForUser, IsFarmerOrConsumer])
 def forget_wallet_pin(request):
     user_id = request.headers.get('user-id')

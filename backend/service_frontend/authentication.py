@@ -89,7 +89,6 @@ def login(request):
         
         if user.profile_status != 'ACTIVATED':
             return Response({
-                'error_code': 'ACCOUNT_INACTIVE_OR_SUSPENDED',
                 'error': 'Account is inactive or Suspended.'
             }, status=status.HTTP_403_FORBIDDEN)
         
@@ -182,7 +181,8 @@ def login_with_token(request):
                 #'req_access': True,
                 'token': new_token,
                 'refresh_token': new_refresh_token,
-                'user_id': user.user_id
+                'user_id': user.user_id,
+                'user_type': user.profile_id.user_type
             }, status=status.HTTP_200_OK)
         
         else:
@@ -195,7 +195,8 @@ def login_with_token(request):
                 #'req_access': True,
                 'token' : token,
                 'refresh_token': refresh_token,
-                'user_id': user.user_id
+                'user_id': user.user_id,
+                'user_type': user.profile_id.user_type
             }, status=status.HTTP_200_OK)
         
     except Tokens.DoesNotExist:
@@ -246,39 +247,48 @@ def login_change_password(request):
 def logout(request):
     """Logout user by deactivating current token"""
     token = request.headers.get("token")
-    user = request.headers.get("user-id")
-    
+    user_id = request.headers.get("user-id")
+
     try:
-        token_obj = Tokens.objects.get(token=token, user_id=user)
+        token_obj = Tokens.objects.get(token=token, user_id=user_id)
+        user_obj = token_obj.user_id  # ✅ actual Users object, not raw string
+
         token_obj.deactivate()
-        
-        disc = "Logout from " + token_obj.device_info + " device only."
-        UserActivity.create_activity(user, activity="LOGOUT", discription=disc)
+
+        device = token_obj.device_info or "Unknown"  # ✅ guard against None
+        disc = f"Logout from {device} device only."
+
+
+        UserActivity.create_activity(user_obj, activity="LOGOUT", discription=disc)  # ✅ now works
+
         return Response({}, status=status.HTTP_200_OK)
+
     except Tokens.DoesNotExist:
         return Response({'error': 'Invalid Login token.'}, status=status.HTTP_401_UNAUTHORIZED)
     except Exception as e:
         return Response({'error': 'Logout failed:\n' + str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+    
 
 @api_view(['POST'])
 @permission_classes([HasValidTokenForUser])
 def logout_all_devices(request):
     """Logout user from all devices by deactivating all tokens"""
-    #token = request.headers.get("token")
-    user = request.headers.get("user-id")
-    
-    try:
-        Tokens.deactivate_all_user_tokens(user)
+    user_id = request.headers.get("user-id")
 
-        
-        UserActivity.create_activity(user, activity="LOGOUT_ALL", discription= "Logout from all devices.")
+    try:
+        user_obj = Users.objects.get(user_id=user_id)  # ✅ get actual Users object
+
+        Tokens.deactivate_all_user_tokens(user_obj)    # ✅ pass Users object
+
+        print(f"{user_obj.user_id} logged out all")
+        UserActivity.create_activity(user_obj, activity="LOGOUT_ALL", discription="Logout from all devices.")
+
         return Response({'message': 'Logout from all devices successful!'}, status=status.HTTP_200_OK)
-    except Tokens.DoesNotExist:
-        return Response({'error': 'Invalid Login token.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    except Users.DoesNotExist:                         # ✅ catch invalid user
+        return Response({'error': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({'error': 'Logout failed:\n' + str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 ##########################################################################################
 #                            Logout
@@ -386,17 +396,12 @@ def forget_password_change_password(request):
     from django.core.exceptions import ValidationError
     user = request.data.get('user_id')
     password = request.data.get('password')
-    try:
-        validate_password(password)
-    except ValidationError as e:
-        return Response({
-            'error': ' '.join(e.messages)  # Joins with space
-        }, status=status.HTTP_400_BAD_REQUEST)
     user = Users.objects.get(user_id=user, profile_status ='ACTIVATED')
     user.update_password(password)
     UserActivity.create_activity(user, activity="FORGET_PASSWORD", discription="")
     return Response({'message': 'Password changed successfully!'}, status=status.HTTP_200_OK)
     
+
 
 ##########################################################################################
 #                            forget Password

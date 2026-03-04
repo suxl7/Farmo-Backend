@@ -1,59 +1,89 @@
-from backend.permissions import HasValidTokenForUser
+from backend.permissions import HasValidTokenForUser, IsFarmer
+from rest_framework.permissions import AllowAny
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
-from backend.models import OrderRequest, OrdProdLink, Users, UsersProfile, Product
+from backend.models import OrderRequest, Users, UsersProfile, Product
 from django.db.models import Q
 from django.core.exceptions import ObjectDoesNotExist
 import secrets
+from django.utils import timezone
+from datetime import timedelta
+from decimal import Decimal
 
+
+##########################################################################################
+#                             Order Request Start
+##########################################################################################
 
 '''
 Order Request Proccessing
 '''
 @api_view(['POST'])
-@permission_classes([HasValidTokenForUser])
+@permission_classes([AllowAny])
 def order_request(request):
     """Get all orders for products belonging to the authenticated farmer"""
-    consumer = request.headers.get('userid')
+    consumer = request.headers.get('user-id')
 
     data = request.data
 
-    expected_delivery_date = data.get('expected_delivery_date') 
+    expected_delivery_within = data.get('expected_delivery_within') 
     shipping_address = data.get('shipping_address')
     total_cost = data.get('total_cost')
-    product_id = data.get('product_id', [])
-    quantity = data.get('quantity', [])
-    cost_per_unit = data.get('cost_per_unit', [])
-
-    total_cost_afterCalc = 0
-    for i in range(len(quantity)):
-         total_cost_afterCalc = total_cost_afterCalc + (quantity[i] * cost_per_unit[i])
+    product_id = data.get('product_id')
+    quantity = data.get('quantity', 0.0)
+    message = data.get('message')
+    payment_method = data.get('payment')
     
-    if total_cost_afterCalc != total_cost:
-        return Response({'error': 'Total cost mismatch!'}, status=status.HTTP_400_BAD_REQUEST)
 
+    expected_delivery_date = timezone.now() + timedelta(days=expected_delivery_within)
     try:
-        order_id = OrderRequest.create_order(
+        product = Product.objects.get(p_id=product_id)
+    except Product.DoesNotExist:
+        return Response({'error': 'Product not found!'}, status=status.HTTP_404_NOT_FOUND)
+    
+    cost_per_unit = product.cost_per_unit
+
+    messageJSON = [{
+        "date-time": str(timezone.now()),
+        "by" : consumer,
+        "message": message
+        }]
+    print(payment_method)
+    if str(payment_method).lower() in ['cashondelivery', 'cod', 'cash on delivery', 'cash', 'on delivery', 'Cash On Delivery']:
+        payment_method = 'CashOnDelivery'
+    else:
+        payment_method = 'WALLET'
+
+    print(payment_method)
+    consumer = Users.objects.get(user_id=consumer)
+    total_cost = Decimal(str(quantity)) * cost_per_unit
+    order_id = f"ORD-{product.user_id.user_id}-id-{secrets.token_hex(3).upper()}"
+    try:
+        order = OrderRequest.create_order(
+            order_id=order_id,
             consumer_id=consumer,
-            total_cost=total_cost_afterCalc,
+            product = product,
+            quantity=quantity,
+            total_cost=total_cost,
             shipping_address=shipping_address,
-            expected_delivery_date=expected_delivery_date
+            expected_delivery_date=expected_delivery_date,
+            message=messageJSON,
+            payment_method=payment_method
         )
-        for i in range(len(product_id)):
-            flag = OrdProdLink.objects.create(
-                order_id=order_id,
-                p_id=product_id[i],
-                quantity=quantity[i],
-                cost_per_unit=cost_per_unit[i]
-            )
-            if not flag:
-                raise Exception('Error in creating order!')
+    
         
-        return Response({'order_id': order_id, 'order_places': 'successfull!'}, status=status.HTTP_200_OK)
+        return Response({'order_id': order.order_id, 'otp': order.ORDER_OTP}, status=status.HTTP_200_OK)
 
     except Exception as e:
-        return Response({'error': e}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+##########################################################################################
+#                             Order Request End
+##########################################################################################
+##########################################################################################
+#                             all_incomming_orders_for_farmer Start
+##########################################################################################
 
     
 '''
@@ -63,55 +93,61 @@ This is for the farmer he gets his incomming orders list.
 @permission_classes([HasValidTokenForUser])
 def all_incomming_orders_for_farmer(request):
 
-    user = request.headers.get('user_id')
+    # user = request.headers.get('user_id')
 
-    data = request.data
+    # data = request.data
 
-    order_status = data.get('order_status')
+    # order_status = data.get('order_status')
 
-    user_type = Users.objects.get(user_id=user).profile_id.user_type
+    # user_type = Users.objects.get(user_id=user).profile_id.user_type
 
-    if user_type.lower() in ['consumer' , 'verifiedconsumer']:
-        return Response({'error': 'You are not a farmer.This is for only farmers'}, status=status.HTTP_401_UNAUTHORIZED)
+    # if user_type.lower() in ['consumer' , 'verifiedconsumer']:
+    #     return Response({'error': 'You are not a farmer.This is for only farmers'}, status=status.HTTP_401_UNAUTHORIZED)
     
-    if user_type.lower() in ['farmer', 'verifiedfarmer']:
-        try:
-            # product IDs for this farmer
-            products = Product.objects.filter(user_id=user).values_list('p_id', flat=True)
+    # if user_type.lower() in ['farmer', 'verifiedfarmer']:
+    #     try:
+    #         # product IDs for this farmer
+    #         products = Product.objects.filter(user_id=user).values_list('p_id', flat=True)
 
-            # distinct order IDs linked to those products
-            orders = OrdProdLink.objects.filter(p_id__in=products).values_list('order_id', flat=True).distinct()
+    #         # distinct order IDs linked to those products
+           
             
-            if order_status.lower() == 'all':  
-                # consumer IDs for those orders
-                consumers = OrderRequest.objects.filter(order_id__in=orders).values_list('consumer_id', flat=True)
-            else:
-                consumers = OrderRequest.objects.filter(order_id__in=orders, order_status=order_status).values_list('consumer_id', flat=True)
+    #         if order_status.lower() == 'all':  
+    #             # consumer IDs for those orders
+    #             consumers = OrderRequest.objects.filter(product__in=products).values_list('consumer_id', flat=True)
+    #         else:
+    #             # consumers = OrderRequest.objects.filter(order_id__in=orders, order_status=order_status).values_list('consumer_id', flat=True)
 
-            # consumer names via UsersProfile
-            profiles = UsersProfile.objects.filter(
-                pk__in=Users.objects.filter(user_id__in=consumers).values_list("profile_id", flat=True)
-            )
-            consumer_names = [profile.get_Full_Name for profile in profiles]
+    #         # consumer names via UsersProfile
+    #         profiles = UsersProfile.objects.filter(
+    #             pk__in=Users.objects.filter(user_id__in=consumers).values_list("profile_id", flat=True)
+    #         )
+    #         consumer_names = [profile.get_Full_Name for profile in profiles]
 
-            # total costs and ordered dates
-            total_costs = list(OrderRequest.objects.filter(order_id__in=orders).values_list('total_cost', flat=True))
-            ordered_dates = list(OrderRequest.objects.filter(order_id__in=orders).values_list('ordered_date', flat=True))
+    #         # total costs and ordered dates
+    #         total_costs = list(OrderRequest.objects.filter(order_id__in=orders).values_list('total_cost', flat=True))
+    #         ordered_dates = list(OrderRequest.objects.filter(order_id__in=orders).values_list('ordered_date', flat=True))
 
-            return Response({
-                'orders': list(orders),
-                'consumers': list(consumers),
-                'consumer_names': consumer_names,
-                'total_costs': total_costs,
-                'ordered_dates': ordered_dates
-                }, status=status.HTTP_200_OK)
+    #         return Response({
+    #             'orders': list(orders),
+    #             'consumers': list(consumers),
+    #             'consumer_names': consumer_names,
+    #             'total_costs': total_costs,
+    #             'ordered_dates': ordered_dates
+    #             }, status=status.HTTP_200_OK)
 
-        except ObjectDoesNotExist:
-            return Response({'error': 'No orders found!'}, status=status.HTTP_404_NOT_FOUND)
+    #     except ObjectDoesNotExist:
+    #         return Response({'error': 'No orders found!'}, status=status.HTTP_404_NOT_FOUND)
         
     return Response({'error': 'Bad Request!'}, status=status.HTTP_400_BAD_REQUEST)
    
+##########################################################################################
+#                             all_incomming_orders_for_farmer End
+##########################################################################################
 
+##########################################################################################
+#                             all_consumer_orders Start
+##########################################################################################
 
 '''
 This is for the consumer he gets his ordered products list.
@@ -130,75 +166,122 @@ def all_consumer_orders(request):
         price = OrderRequest.objects.filter(order_id__in=orders).values_list('total_cost', flat=True)
         #products_id = OrdProdLink.objects.filter(order_id__in=orders).values_list('p_id', flat=True)
         p_id = []
-        product_name = []
-        for i in range(len(orders)):
-            p_id[i] = OrdProdLink.objects.filter(order_id=orders[i]).values_list('p_id', flat=True)
-            if len(p_id[i]) == 1:
-                product_name[i] = Product.objects.filter(p_id=p_id[i][0]).values_list('name', flat=True)
+        # product_name = []
+        # for i in range(len(orders)):
+        #     p_id[i] = OrdProdLink.objects.filter(order_id=orders[i]).values_list('p_id', flat=True)
+        #     if len(p_id[i]) == 1:
+        #         product_name[i] = Product.objects.filter(p_id=p_id[i][0]).values_list('name', flat=True)
         
-            elif len(p_id[i]) >= 2:
-                product_name[i] = Product.objects.filter(p_id=p_id[i][0]).values_list('name', flat=True)
-                product_name[i] = product_name[i].append(Product.objects.filter(p_id=p_id[i][1]).values_list('name', flat=True))
-                if len(p_id[i]) > 2:
-                   product_name[i] = product_name[i].append("and other items.")
+        #     elif len(p_id[i]) >= 2:
+        #         product_name[i] = Product.objects.filter(p_id=p_id[i][0]).values_list('name', flat=True)
+        #         product_name[i] = product_name[i].append(Product.objects.filter(p_id=p_id[i][1]).values_list('name', flat=True))
+        #         if len(p_id[i]) > 2:
+        #            product_name[i] = product_name[i].append("and other items.")
 
-        return Response({
-                'orders': list(orders),
-                'ordered_date': list(ordered_date),
-                'price': list(price),
-                'product_name': list(product_name)
-                }, status=status.HTTP_200_OK)  
+        # return Response({
+        #         'orders': list(orders),
+        #         'ordered_date': list(ordered_date),
+        #         'price': list(price),
+        #         'product_name': list(product_name)
+        #         }, status=status.HTTP_200_OK)  
            
     except ObjectDoesNotExist:
         return Response({'error': 'No orders found!'}, status=status.HTTP_404_NOT_FOUND)
-    
-
+##########################################################################################
+#                              all Consumer End
+##########################################################################################
 '''get order detail'''
+
 @api_view(['POST'])
-@permission_classes([HasValidTokenForUser])
+@permission_classes([AllowAny])
 def get_order_detail(request):
     """Get all orders for products belonging to the authenticated farmer"""
-    user = request.headers.get('user_id')
+    user = request.headers.get('user-id')
     data = request.data
     order_id = data.get('order_id')
 
     try:
+        from backend.serializers import OrderRequestSerializer
         order = OrderRequest.objects.get(order_id=order_id)
-        ordered_date = order.ordered_date
-        price = order.total_cost
-        products_id = OrdProdLink.objects.filter(order_id=order_id).values_list('p_id', flat=True)
-        product_quantity = OrdProdLink.objects.filter(order_id=order_id).values_list('quantity', flat=True)
-        product_cost_per_unit = OrdProdLink.objects.filter(order_id=order_id).values_list('cost_per_unit', flat=True)
-        product_name = []
-        for i in range(len(products_id)):
-            product_name[i] = Product.objects.filter(p_id=products_id[i]).values_list('name', flat=True)
-        
-     
-        order_status = order.order_status
-        order_shipping_adderss = order.shipping_address
-        order_expected_delivery_date = order.expected_delivery_date
-        order_otp = order.ORDER_OTP
-
-        consumer_id = order.consumer_id
-        farmer_id = Product.objects.get(p_id=products_id[0]).values_list('user_id', flat=True) 
-
-        return Response({
-                'order_id': order_id,
-                'farmer_id': farmer_id,
-                'consumer_id': consumer_id,
-                'ordered_date': ordered_date,
-                'product_id': list(products_id),
-                'product_name': list(product_name),
-                'product_quantity': list(product_quantity),
-                'product_cost_per_unit': list(product_cost_per_unit),
-                'price': price,
-                'order_status': order_status,
-                'order_shipping_adderss': order_shipping_adderss,
-                'order_expected_delivery_date': order_expected_delivery_date,
-                'order_otp': order_otp
-                }, status=status.HTTP_200_OK)
+        if order.consumer_id.user_id != user:
+            return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+        data = OrderRequestSerializer(order).data
+        cost_per_unit = order.product.cost_per_unit
+        data.pop('order_otp', None)
+        data["cost_per_unit"] = cost_per_unit
+        return Response(data, status=status.HTTP_200_OK)
 
     except ObjectDoesNotExist:
         return Response({'error': 'No orders found!'}, status=status.HTTP_404_NOT_FOUND)
     
+##########################################################################################
+#                             get_order_detail End
+##########################################################################################
+##########################################################################################
+#                             Confirm Delivery Start
+##########################################################################################
+
+@api_view(['POST'])
+@permission_classes([AllowAny, IsFarmer])
+def order_status_update(request):
+    userid = request.headers.get('user-id')
+    order_id = request.data.get('order_id')
+    otp = request.data.get('otp')
+    order_status = request.data.get('status')
+
+    try:
+        order = OrderRequest.objects.get(order_id=order_id, ORDER_OTP=otp)
+        
+        if order.product.user_id.user_id != userid:
+            return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+        if order_status.lower() in ['accepted', 'accept']:
+            order.order_status = 'ACCEPTED'
+        elif order_status.lower() in ['rejected', 'reject']:
+            order.order_status = 'REJECTED'
+        else:
+            return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
+        order.save()
+        return Response({'message': 'Order status updated successfully'}, status=status.HTTP_200_OK)
+    except ObjectDoesNotExist:
+        return Response({'error': 'Invalid order ID'}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        if order.order_status == 'REJECTED':
+            order.order_status = 'ACCEPTED'
+            order.save()
+            return Response({'message': 'Order status updated successfully'}, status=status.HTTP_200_OK)
+        
+        return Response({'error': 'Already Accepted.'}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def confirm_delivery(request):
+    otp = request.data.get('otp')
+    order_id = request.data.get('order_id')
+    paid_amount_by_wallet = request.data.get('paid_amount_by_wallet')
+
+
+    from backend.service_frontend.transaction import transfer_fund
     
+    try:
+        order = OrderRequest.objects.get(order_id=order_id, ORDER_OTP=otp)
+
+        if order.order_status == 'DELIVERED':
+            return Response({'error': 'Order already delivered.'}, status=status.HTTP_400_BAD_REQUEST)
+        elif order.order_status != 'ACCEPTED':
+            return Response({'error': 'Order is not yet accepted.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        payment_method = order.payment_method
+        if payment_method == 'WALLET':
+            transfer_fund(order, paid_amount_by_wallet)
+        order.order_status = 'DELIVERED'
+        order.save()
+        return Response({'message': 'Order delivered successfully'}, status=status.HTTP_200_OK)
+    except ObjectDoesNotExist:
+        return Response({'error': 'Invalid OTP'}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+##########################################################################################
+#                            Confirm Delivery End
+##########################################################################################
+ 

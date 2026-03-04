@@ -1,23 +1,29 @@
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
-from backend.models import Users, Verification, Product, Connections, OrderRequest, OrdProdLink, Wallet, OrdProdLink, Transaction
+from backend.models import Users, Verification, Product, Connections, OrderRequest, Wallet, Transaction
 from backend.permissions import HasValidTokenForUser
 from rest_framework.permissions import AllowAny
-from django.db.models import Q, Sum, F
+from django.db.models import Q, Sum, F, Avg
 from django.utils import timezone
  
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def dashboard_fullfillment(request):
     user_id = request.headers.get('user-id')
-    print(user_id)
+    # print(f"{user_id}")
+    # print(request.headers.get('token'))
+    # print(request.headers)
     # ✅ consistent key
     try:
         user = Users.objects.get(user_id=user_id)
     except Users.DoesNotExist:
         return Response({'detail': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
+    if user.profile_id.user_type not in ['Admin', 'SuperAdmin']:
+        nearby_farmers_data = get_nearby_top_rated_farmers(user)
+    from backend.models import Rating
+    
     if user.is_admin:
         return Response({
             'total_farmers': get_total_farmers(),
@@ -28,29 +34,128 @@ def dashboard_fullfillment(request):
 
     elif user.profile_id.user_type in ['Farmer', 'VerifiedFarmer']:
         return Response({
-            'username': user.get_full_name_from_userModel(),
-            'connections': get_user_total_connections(user),
-            'wallet_balance': get_wallet_balance(user),
-            'todays_income': get_todays_income(user),
-            #'total_orders': get_farmer_orderRequests(user_id)
+            'username':             user.get_full_name_from_userModel(),
+           # 'order_received':       str(get_farmer_orderRequests(user)),
+            'wallet_balance':        str(get_wallet_balance(user)),
+            'todays_income':         str(get_todays_income(user)),
+            'rate' :  str(Rating.objects.filter(rated_to=user).aggregate(Avg('score'))['score__avg']),
         }, status=status.HTTP_200_OK)
-
+    
     elif user.profile_id.user_type in ['Consumer', 'VerifiedConsumer']:
         return Response({
-            'connections': get_user_total_connections(user_id),
-            'order_requests': get_orderRequested_by_consumer(user_id),
+            'pending_order':  str(get_orderRequested_by_consumer(user)),
             'username': user.get_full_name_from_userModel(),
-            'connections': get_user_total_connections(user_id),
-            'wallet_balance': get_wallet_balance(user_id),
+            'todays_expense':  str(get_todays_expense(user)),
+            'wallet_balance':  str(get_wallet_balance(user_id)),
+           # 'recent_accepted_orders': get_recent_accepted_orders(user)
         }, status=status.HTTP_200_OK)
 
     return Response({'detail': 'Unauthorized user type'}, status=status.HTTP_403_FORBIDDEN)
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def dashboard_fullfillmentt(request):
+    user_id = request.headers.get('user-id')
+    print(f"{user_id}")
+    print(request.headers.get('token'))
+    print(request.headers)
+    # ✅ consistent key
+    try:
+        user = Users.objects.get(user_id=user_id)
+    except Users.DoesNotExist:
+        return Response({'detail': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if user.profile_id.user_type not in ['Admin', 'SuperAdmin']:
+        nearby_farmers_data = get_nearby_top_rated_farmers(user)
+    from backend.models import Rating
+    
+    if user.is_admin:
+        return Response({
+            'total_farmers': get_total_farmers(),
+            'active_products': get_active_products(),
+            'total_consumers': get_total_consumers(),
+            'verification_requests': get_verification_requests()
+        }, status=status.HTTP_200_OK)
+
+    elif user.profile_id.user_type in ['Farmer', 'VerifiedFarmer']:
+        return Response({
+            'username':             user.get_full_name_from_userModel(),
+           # 'order_received':       str(get_farmer_orderRequests(user)),
+            'wallet_balance':        str(get_wallet_balance(user)),
+            'todays_income':         str(get_todays_income(user)),
+            'rate' :  str(Rating.objects.filter(rated_to=user).aggregate(Avg('score'))['score__avg']),
+        }, status=status.HTTP_200_OK)
+    
+    elif user.profile_id.user_type in ['Consumer', 'VerifiedConsumer']:
+        return Response({
+            'pending_order':  str(get_orderRequested_by_consumer(user)),
+            'username': user.get_full_name_from_userModel(),
+            'todays_expense':  str(get_todays_expense(user)),
+            'wallet_balance':  str(get_wallet_balance(user_id)),
+           # 'recent_accepted_orders': get_recent_accepted_orders(user)
+        }, status=status.HTTP_200_OK)
+
+    return Response({'detail': 'Unauthorized user type'}, status=status.HTTP_403_FORBIDDEN)
+
+def get_recent_accepted_orders(user_obj):
+    """Get accepted orders placed within the last 5 days for a consumer"""
+    from django.utils import timezone
+    from datetime import timedelta
+
+    five_days_ago = timezone.now() - timedelta(days=5)
+
+    orders = OrderRequest.objects.filter(
+        consumer_id=user_obj,
+        order_status='ACCEPTED',
+        ordered_date__gte=five_days_ago
+    ).order_by('-ordered_date')
+
+    data = []
+    for order in orders:
+        data.append({
+            "order_id":               order.order_id,
+            "product_name":           order.product.name if order.product else None,
+            "product_type":           order.product.product_type if order.product else None,
+            "total_cost":             order.total_cost,
+            "ordered_date":           order.ordered_date,
+            "expected_delivery_date": order.expected_delivery_date,
+            "shipping_address":       order.shipping_address,
+            "order_status":           order.order_status,
+        })
+
+    return data
+
+def get_farmer_orderRequests(user_id):
+    user = user_id
+    product = Product.objects.filter(user_id=user, product_status= 'Available')
+    return OrderRequest.objects.filter(product__in=product, order_status = "PENDING").count()
+
+def get_orderRequested_by_consumer(user):
+    return OrderRequest.objects.filter(consumer_id=user, order_status = "PENDING").count()
+    
+  
+
+def get_nearby_top_rated_farmers(user_obj, limit=2):
+    """Get top rated farmers in the same district as the user"""
+    from django.db.models import Avg
+
+    district = user_obj.profile_id.district
+
+    return (
+        Users.objects.filter(
+            profile_id__district__iexact=district,
+            profile_id__user_type__in=['Farmer', 'VerifiedFarmer']
+        )
+        .annotate(avg_rating=Avg('rated_to__score'))
+        .order_by('-avg_rating')[:limit]
+    )
+    
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def dashboard_fullfillment_test(request):
     user_id = request.headers.get('user-id')
+    print(user_id)
     
     # ✅ consistent key
     try:
@@ -80,6 +185,7 @@ def dashboard_fullfillment_test(request):
         return Response({
             'connections': get_user_total_connections(user_id),
             'order_requests': get_orderRequested_by_consumer(user_id)
+            
         }, status=status.HTTP_200_OK)
 
     return Response({'detail': 'Unauthorized user type'}, status=status.HTTP_403_FORBIDDEN)
@@ -117,7 +223,7 @@ def get_user_total_connections(user_id):
 
 def get_farmer_orderRequests(farmer):
     farmer_products = Product.objects.filter(user_id=farmer)
-    return OrdProdLink.objects.filter(p_id__in=farmer_products, order_status = "PENDING").count()
+    return OrderRequest.objects.filter(product__in=farmer_products, order_status = "PENDING").count()
 
 def get_orderRequested_by_consumer(consumer):
     return OrderRequest.objects.filter(consumer_id=consumer, order_status = "PENDING").count()

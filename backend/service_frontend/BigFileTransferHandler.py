@@ -6,6 +6,7 @@ import mimetypes
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
+from backend.permissions import HasValidTokenForUser, IsFarmer, IsAdmin
 from rest_framework.response import Response
 from rest_framework import status
 
@@ -53,6 +54,7 @@ def big_file_upload(request):
     userid = request.data.get('user_id') or request.headers.get('user-id')
     action = request.data.get('action')
 
+    print(action)
     if not userid:
         return Response({'error': 'user-id is required'}, status=400)
 
@@ -233,8 +235,9 @@ def _save_profile_picture_direct(userid, session, assembled_path):
         # ── Build destination path ────────────────────────────
         save_dir = os.path.join(settings.MEDIA_ROOT, 'Uploaded_Files', str(userid), 'profile')
         os.makedirs(save_dir, exist_ok=True)
+        from datetime import datetime
 
-        unique_name  = f"profile-pic_{uuid.uuid4().hex}.jpg"
+        unique_name = f"profile-pic-{datetime.now().strftime('%d%m%Y_%H%M%S')}.jpg"
         dest_path    = os.path.join(save_dir, unique_name)
         # Relative URL stored in DB (no leading slash)
         relative_url = f"Uploaded_Files/{userid}/profile/{unique_name}"
@@ -443,20 +446,46 @@ class _AssembledFile:
 @permission_classes([AllowAny])
 def big_file_download(request):
     userid     = request.headers.get('user-id')
+    
     subject    = request.data.get('subject')
-    product_id = request.data.get('product_id') if subject == 'PRODUCT_MEDIA' else None
+    product_id = request.data.get('product_id') if subject in ['PRODUCT_MEDIA','PRODUCT', 'product', 'product_media', 'productmedia', 'ProductMedia'] else None
     seq        = request.data.get('seq', 1)
 
     if subject == 'PROFILE_PICTURE':
-        result = profile_pic_download(userid=userid)
+        result, status= profile_pic_download(userid=userid)
     elif subject == 'PRODUCT_MEDIA':
-        result = product_media_download(userid=userid, product_id=product_id, seq=seq)
+        result, status= product_media_download(userid=userid, product_id=product_id, seq=seq)
     elif subject == 'USER_ID_VERIFICATION_MEDIA':
-        result = user_id_verification_download(userid=userid, seq=seq)
+        result, status= user_id_verification_download(userid=userid, seq=seq)
     else:
-        return Response({'error': 'Invalid or missing subject'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Invalid or missing subject'}, status=400)
 
-    return Response(result, status=status.HTTP_200_OK)
+    return Response(result, status=status)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny, IsAdmin])
+def big_file_download_v2(request):
+    """
+    New version of big_file_download with enhanced error handling and
+    support for additional subjects like USER_ID_VERIFICATION_MEDIA.
+    """
+    userid     = request.data.get('user_id')
+    
+    subject    = request.data.get('subject')
+    product_id = request.data.get('product_id') if subject in ['PRODUCT_MEDIA','PRODUCT', 'product', 'product_media', 'productmedia', 'ProductMedia'] else None
+    seq        = request.data.get('seq', 1)
+
+    if subject == 'PROFILE_PICTURE':
+        result, status= profile_pic_download(userid=userid)
+    elif subject == 'PRODUCT_MEDIA':
+        result, status= product_media_download(userid=userid, product_id=product_id, seq=seq)
+    elif subject == 'USER_ID_VERIFICATION_MEDIA':
+        result, status= user_id_verification_download(userid=userid, seq=seq)
+    else:
+        return Response({'error': 'Invalid or missing subject'}, status=400)
+
+    return Response(result, status=status)
 
 ##########################################################################################
 #                             Big File DOWNLOAD End
@@ -473,7 +502,7 @@ def profile_pic_download(userid):
         user    = Users.objects.get(user_id=userid, profile_status='ACTIVATED')
         profile = user.profile_id
     except Users.DoesNotExist:
-        return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 1, 'seq': 1}
+        return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 1, 'seq': 1}, status.HTTP_404_NOT_FOUND
 
     if profile.profile_url:
         profile_url = settings.MEDIA_ROOT + '/' + profile.profile_url
@@ -506,7 +535,9 @@ def profile_pic_download(userid):
         'media_type': 'img',
         'total'     : 1,
         'seq'       : 1,
-    }
+    }, status.HTTP_200_OK
+
+
 
 
 # ─────────────────────────────────────────────────────────────
@@ -522,7 +553,8 @@ def product_media_download(userid, product_id, seq=1):
         target_media = next((m for m in media_list if m['serial_no'] == int(seq)), None)
 
         if not target_media:
-            return {'file': None, 'mime_type': None, 'media_type': None, 'total': len(media_list), 'seq': 0}
+            return {'file': None, 'mime_type': None, 'media_type': None, 'total': len(media_list), 'seq': 0}, status.HTTP_404_NOT_FOUND
+
 
         file_path = os.path.join(settings.MEDIA_ROOT, target_media['media_url'])
 
@@ -537,15 +569,19 @@ def product_media_download(userid, product_id, seq=1):
             'media_type': target_media['media_type'],
             'total': len(media_list),
             'seq': target_media['serial_no'],
-        }
+        }, status.HTTP_200_OK
+
 
     except Product.DoesNotExist:
-        return {'file': None, 'mime_type': None, 'media_type': None, 'total': 0, 'seq': 0}
+        return {'file': None, 'mime_type': None, 'media_type': None, 'total': 0, 'seq': 0}, status.HTTP_404_NOT_FOUND
+
     except FileNotFoundError:
-        return {'file': None, 'mime_type': None, 'media_type': None, 'total': 0, 'seq': 0}
+        return {'file': None, 'mime_type': None, 'media_type': None, 'total': 0, 'seq': 0}, status.HTTP_404_NOT_FOUND
+
     except Exception as e:
-        print(f"[product_pic_download] Unexpected error: {e}")
-        return {'file': None, 'mime_type': None, 'media_type': None, 'total': 0, 'seq': 0}
+        return {'file': None, 'mime_type': None, 'media_type': None, 'total': 0, 'seq': 0}, status.HTTP_400_BAD_REQUEST
+
+
 
 
 # ─────────────────────────────────────────────────────────────
@@ -566,7 +602,8 @@ def user_id_verification_download(userid, seq=1):
             relative_path = verification.id_front  # fallback
 
         if not relative_path:
-            return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 2, 'seq': seq}
+            return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 2, 'seq': seq}, status.HTTP_404_NOT_FOUND
+
 
         file_path = os.path.join(settings.MEDIA_ROOT, relative_path)
 
@@ -581,12 +618,15 @@ def user_id_verification_download(userid, seq=1):
             'media_type': 'img',
             'total': 2,
             'seq': seq,
-        }
+        }, status.HTTP_200_OK
+
 
     except Verification.DoesNotExist:
-        return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 2, 'seq': 0}
+        return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 2, 'seq': 0}, status.HTTP_404_NOT_FOUND
+
     except FileNotFoundError:
-        return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 2, 'seq': 0}
+        return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 2, 'seq': 0}, status.HTTP_404_NOT_FOUND
+
     except Exception as e:
         print(f"[user_id_verification_download] Unexpected error: {e}")
-        return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 2, 'seq': 0}
+        return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 2, 'seq': 0}, status.HTTP_400_BAD_REQUEST

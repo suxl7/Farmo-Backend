@@ -45,7 +45,11 @@ from backend.service_frontend.userProfile import (
     update_payment_method,
     change_password,
     view_own_profile,
-    view_user_profile_by_admin)
+    view_user_profile_by_admin,
+    check_password,
+    update_profile,
+    update_user_profile
+    )
 
 from backend.service_frontend.servicesForUsers import (
     user_admin_page,
@@ -54,13 +58,17 @@ from backend.service_frontend.servicesForUsers import (
     user_farmer_page,
     user_consumer_page,
     get_transaction_history_user,
-    get_transaction_history_admin)
+    get_transaction_history_admin,
+    action_status_action,
+    update_admin_profile)
 
 from backend.service_frontend.orders import (
     order_request, 
     get_order_detail, 
     all_incomming_orders_for_farmer, 
-    all_consumer_orders)
+    all_consumer_orders,
+    confirm_delivery,
+    order_status_update)
 
 from backend.service_frontend.servicesRating import (
     # Farmer Rating Views (Consumer rates Farmer)
@@ -100,14 +108,19 @@ from backend.service_frontend.servicesRating import (
 from backend.service_frontend.serviceHome import (
     dashboard_fullfillment,
     dashboard_fullfillment_test,
-    refresh_wallet
+    refresh_wallet,
+    dashboard_fullfillmentt
 )
 
 from backend.service_frontend.product import (
     add_products,
     add_product_FromAdmin,
     all_available_categories,
-    available_farm_product_on_category
+    available_farm_product_on_category,
+    get_product_feed,
+    product_home_admin,
+    product_filter_admin,
+    product_details_for_users
 )
 
 from backend.service_frontend.serviceWallet import (
@@ -124,7 +137,8 @@ from backend.service_frontend.internal_service import (
 
 from backend.service_frontend.BigFileTransferHandler import (
     big_file_upload,
-    big_file_download
+    big_file_download,
+    big_file_download_v2
 )
 
 
@@ -139,7 +153,10 @@ urlpatterns = [
     #BigFile Upload/Download
     path('api/file/upload/', big_file_upload, name='big_file_upload'),
     path('api/file/download/', big_file_download, name='big_file_download'),
-    
+    path('api/file/download2/', big_file_download_v2, name='big_file_download_v2'),
+
+    # Dashboard
+    path('api/home/dashboardd/', dashboard_fullfillmentt, name='dashboard_fullfillmentt'),
     # Authentication
     path('api/auth/check-userid/', check_userid_available, name='check_userid_available'),
     path('api/auth/login/', login, name='login'), # checked
@@ -154,18 +171,19 @@ urlpatterns = [
     path('api/auth/forgot-password-change-password/', forget_password_change_password, name='forget_password_change_password'), # checked
 
     # User
+    path('api/user/update-profile/', update_profile, name='update_profile'),
+    path('api/user/user-profile/update/', update_user_profile, name='update_user_profile'),
+    path('api/user/address/', get_address, name='get_address'),
+    path('api/user/payment-method/', update_payment_method, name='add_payment_method'),
+    path('api/user/get-payment-method/', get_payment_method, name='get_payment_method'),
+    path('api/user/check-password/', check_password, name='check_password'),
     path('api/user/update-profile-picture/', update_profile_picture, name='update_profile_picture'),
     path('api/user/view-profile/', view_own_profile, name='view_profile'),
     path('api/user/verification-request/', verification_request, name='verification_request'),
     path('api/user/online-status/', get_online_status, name='get_online_status'),
-    path('api/user/farmer/order-request/', order_request, name='order_request'),
-    path('api/user/farmer/all-incomming-orders/', all_incomming_orders_for_farmer, name='all_incomming_orders_for_farmer'),
-    path('api/user/consumer/all-orders/', all_consumer_orders, name='all_consumer_orders'),
-    path('api/user/farmer/order-detail/', get_order_detail, name='get_order_detail'),
     path('api/user/transaction-history/', get_transaction_history_user, name='get_transaction_history_user'),
     
    
-    
     # Wallet
     path('api/user/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin'),
     path('api/user/wallet/req-own-wallet/', req_own_wallet, name='req_own_wallet'),
@@ -181,10 +199,10 @@ urlpatterns = [
     path('api/admin/admin-list/', admin_list, name='admin_list'),
     path('api/admin/top-rated-farmers/', top_rated_farmers, name='top_rated_farmers'),
     path('api/admin/transaction-history/', get_transaction_history_admin, name='get_transaction_history_admin'),
-    path('api/admin/admin-user/', user_admin_page, name='user_admin_page'),
-    path('api/user/address/', get_address, name='get_address'),
-    path('api/user/payment-method/', update_payment_method, name='add_payment_method'),
-    path('api/user/get-payment-method/', get_payment_method, name='get_payment_method'),
+    path('api/admin/admin-page/', user_admin_page, name='user_admin_page'),
+    path('api/admin/action-status-action/', action_status_action, name='action_status_admin'),
+    path('api/admin/update-user-profile/', update_admin_profile, name='update_user_profile'),
+
 
     
     # Rating
@@ -218,14 +236,26 @@ urlpatterns = [
     path('api/home/refresh-wallet/', refresh_wallet, name='refresh_wallet'),
 
     # Profile
-    path('api/admin/user-profile/change-password/', change_password, name='change_password'), #checked
+    path('api/user/change-password/', change_password, name='change_password'), #checked
     
-
     # Product
+    path('api/admin/product/', product_home_admin, name='product_home_admin'),
     path('api/product/add/', add_products, name='add_products'),
     path('api/admin/product/add/', add_product_FromAdmin, name='add_product_FromAdmin'),
     path('api/product/category/', all_available_categories, name='all_available_categories'),
     path('api/product/category/products/', available_farm_product_on_category, name='available_farm_product_on_category'),
+    path('api/product/feed/', get_product_feed, name='get_product_feed'),
+    path('api/product/filter/', product_filter_admin, name='product_filter_admin'),
+    path('api/product/users/details/', product_details_for_users, name='product_details_for_users'),
+
+    #Order
+    path('api/user/order/request/', order_request, name='order_request'),
+    path('api/user/farmer/all-incomming-orders/', all_incomming_orders_for_farmer, name='all_incomming_orders_for_farmer'),
+    path('api/user/consumer/all-orders/', all_consumer_orders, name='all_consumer_orders'),
+    path('api/user/order/detail/', get_order_detail, name='get_order_detail'),
+    path('api/user/order/confirm-delivery/', confirm_delivery, name='confirm_delivery'),
+    path('api/user/order/status-update/', order_status_update, name='order_status_update'),
+
 ]
 
 # Serve media files during development
