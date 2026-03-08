@@ -133,7 +133,7 @@ def login_with_token(request):
     user_id = request.data.get('user_id')
     refresh_token = request.data.get('refresh_token')
     device_info = request.data.get('device_info')
-    
+    # print(request.data)
     if not token or not user_id or not refresh_token:
         return Response({
             #'req_access': False,

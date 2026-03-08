@@ -35,7 +35,9 @@ from backend.service_frontend.authentication import (
 from backend.service_frontend.servicesActivity import (
     get_online_status, 
     check_userid_available, 
-    get_address)
+    get_address,
+    get_own_address,
+    change_to_farmer)
 
 from backend.service_frontend.userProfile import (
     register, 
@@ -60,7 +62,10 @@ from backend.service_frontend.servicesForUsers import (
     get_transaction_history_user,
     get_transaction_history_admin,
     action_status_action,
-    update_admin_profile)
+    update_admin_profile,
+    search_users_from_app,
+    get_connection_list,
+    search_users_android)
 
 from backend.service_frontend.orders import (
     order_request, 
@@ -68,7 +73,14 @@ from backend.service_frontend.orders import (
     all_incomming_orders_for_farmer, 
     all_consumer_orders,
     confirm_delivery,
-    order_status_update)
+    order_status_update,
+    get_orders_list,
+    cancel_order)
+
+from backend.service_frontend.transaction import (
+    recent_transactions,
+    transaction_history
+)
 
 from backend.service_frontend.servicesRating import (
     # Farmer Rating Views (Consumer rates Farmer)
@@ -117,18 +129,29 @@ from backend.service_frontend.product import (
     add_product_FromAdmin,
     all_available_categories,
     available_farm_product_on_category,
-    get_product_feed,
     product_home_admin,
     product_filter_admin,
-    product_details_for_users
+    product_details_for_users,
+    my_product_list,
+    get_product_for_update,
+    update_product,
+    product_availability_toggle
 )
+
+from backend.service_frontend.product_feed import (
+    get_product_feed
+)
+
 
 from backend.service_frontend.serviceWallet import (
     req_own_wallet,
     req_wallet_by_admin,
     change_wallet_pin,
     verify_wallet_pin,
-    forget_wallet_pin
+    forget_wallet_pin,
+    wallet_for_page,
+    setup_wallet_pin,
+    wallet_add_withdraw
 )
 
 from backend.service_frontend.internal_service import (
@@ -174,6 +197,7 @@ urlpatterns = [
     path('api/user/update-profile/', update_profile, name='update_profile'),
     path('api/user/user-profile/update/', update_user_profile, name='update_user_profile'),
     path('api/user/address/', get_address, name='get_address'),
+    path('api/user/own-address/', get_own_address, name='get_own_address'),
     path('api/user/payment-method/', update_payment_method, name='add_payment_method'),
     path('api/user/get-payment-method/', get_payment_method, name='get_payment_method'),
     path('api/user/check-password/', check_password, name='check_password'),
@@ -181,14 +205,18 @@ urlpatterns = [
     path('api/user/view-profile/', view_own_profile, name='view_profile'),
     path('api/user/verification-request/', verification_request, name='verification_request'),
     path('api/user/online-status/', get_online_status, name='get_online_status'),
+    
     path('api/user/transaction-history/', get_transaction_history_user, name='get_transaction_history_user'),
     
    
     # Wallet
     path('api/user/wallet/verify-pin/', verify_wallet_pin, name='verify_wallet_pin'),
     path('api/user/wallet/req-own-wallet/', req_own_wallet, name='req_own_wallet'),
-    path('api/user/wallet/change-wallet-pin/', change_wallet_pin, name='change_wallet_pin'),
-    path('api/user/wallet/forget-wallet-pin/', forget_wallet_pin, name='forget_wallet_pin'),
+    path('api/user/wallet/change-pin/', change_wallet_pin, name='change_wallet_pin'),
+    path('api/user/wallet/forget-pin/', forget_wallet_pin, name='forget_wallet_pin'),
+    path('api/user/wallet/page/', wallet_for_page, name='wallet_for_page'),
+    path('api/user/wallet/set-pin/', setup_wallet_pin, name='setup_wallet_pin'),
+    path('api/wallet/add-withdraw/', wallet_add_withdraw, name='wallet_add_withdraw'),
 
     # Admin
     path('api/admin/search-user/', search_user, name='search_user'),
@@ -202,6 +230,11 @@ urlpatterns = [
     path('api/admin/admin-page/', user_admin_page, name='user_admin_page'),
     path('api/admin/action-status-action/', action_status_action, name='action_status_admin'),
     path('api/admin/update-user-profile/', update_admin_profile, name='update_user_profile'),
+
+    # User Search
+    path('api/user/search-user/', search_users_from_app, name='search_users_by_location'),
+    path('api/user/connections/', get_connection_list, name='get_connection_list'),
+    path('api/user/search/', search_users_android, name='search_users_android'),
 
 
     
@@ -229,6 +262,8 @@ urlpatterns = [
     path('api/consumer/rating/list/', ListConsumerRatings.as_view(), name='list_consumer_ratings'),
     path('api/consumer/rating/list/<int:consumer_id>/', ListRatingsByConsumer.as_view(), name='list_ratings_by_consumer'),
     path('api/consumer/rating/profile/', consumer_profile_rating, name='consumer_profile_rating'),
+
+    path('api/user/change-to-farmer/', change_to_farmer, name='change_to_farmer'),
    
     # Home
     path('api/home/dashboard/', dashboard_fullfillment, name='dashboard_fullfillment'),
@@ -247,14 +282,26 @@ urlpatterns = [
     path('api/product/feed/', get_product_feed, name='get_product_feed'),
     path('api/product/filter/', product_filter_admin, name='product_filter_admin'),
     path('api/product/users/details/', product_details_for_users, name='product_details_for_users'),
+    path('api/product/mylist/', my_product_list, name='my_product_list'),
+    path('api/product/get-for-update/<str:pid>/', get_product_for_update, name='get_product_for_update'),
+    path('api/product/update/', update_product, name='update_product'),
+    path('api/product/toggle-availability/', product_availability_toggle, name='product_availability_toggle'),
+
 
     #Order
     path('api/user/order/request/', order_request, name='order_request'),
+    path('api/user/order/list/', get_orders_list, name='get_orders_list'),
     path('api/user/farmer/all-incomming-orders/', all_incomming_orders_for_farmer, name='all_incomming_orders_for_farmer'),
     path('api/user/consumer/all-orders/', all_consumer_orders, name='all_consumer_orders'),
     path('api/user/order/detail/', get_order_detail, name='get_order_detail'),
     path('api/user/order/confirm-delivery/', confirm_delivery, name='confirm_delivery'),
     path('api/user/order/status-update/', order_status_update, name='order_status_update'),
+    path('api/user/order/cancel/', cancel_order, name='cancel_order'),
+
+    #Transaction
+    path('api/user/transaction/recent/', recent_transactions, name='recent_transactions'),
+    path('api/user/transaction/', transaction_history, name='transaction_history'),
+
 
 ]
 

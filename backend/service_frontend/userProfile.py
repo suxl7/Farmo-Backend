@@ -20,7 +20,7 @@ from backend.utils.validators import (validate_email_format,
 from django.core.exceptions import ValidationError
 from rest_framework.views import APIView
 
-
+from backend.utils.whatsapp import normalize_whatsapp
 
 ##########################################################################################
 #                            Signup Start
@@ -31,7 +31,7 @@ from rest_framework.views import APIView
 @permission_classes([AllowAny])
 def register(request):
     """Register new user with profile"""
-    created_by = request.data.get('created_by') # Admin or Itself
+    created_by = request.data.get('created_by') # SuperAdmin and Admin or Itself
 
     user_id = request.data.get('user_id')
     f_name = request.data.get('f_name') # required
@@ -52,6 +52,9 @@ def register(request):
     dob_str = request.data.get('dob')
     
     user_type = request.data.get('user_type')
+
+    print("register")
+    print(request.data)
     
     profile_picture =  None
 
@@ -91,8 +94,8 @@ def register(request):
         if facebook is not None or facebook != '':
             validate_facebook_url(facebook)
         if whatsapp is not None or whatsapp != '':
-            validate_nepali_phone(whatsapp)
-            whatsapp = 'https://wa.me/+977' + str(whatsapp)
+            whatsapp = normalize_whatsapp(whatsapp)
+            validate_whatsapp(whatsapp)
     except ValidationError as e:
         return Response({
             'error': e.messages  # Joins with space
@@ -104,9 +107,10 @@ def register(request):
             'error': 'User ID already exists.'}, status=status.HTTP_400_BAD_REQUEST)
     
 
-    if user_type == 'SuperAdmin' and created_by == 'Admin':
+    if user_type == 'SuperAdmin' and not created_by == 'SuperAdmin':
         return Response({
             'error': 'You are trying to create higher level user.'}, status=status.HTTP_403_FORBIDDEN)
+    
     
     if user_type not in ['SuperAdmin', 'Admin']:
         is_admin = False
@@ -369,7 +373,11 @@ def change_password(request):
     if not user.check_password(old_password):
         return Response({'error': 'Incorrect old password!'}, status=status.HTTP_400_BAD_REQUEST)
  
- 
+    userAct = UserActivity.objects.filter(user_id=user, activity="CHANGE_PASSWORD").order_by('-timestamp').first()
+    date_diff = timezone.now() - userAct.timestamp
+    if date_diff.days < 5:
+        return Response ({'error': "Last Change password was less than 5 days ago."}, status=status.HTTP_400_BAD_REQUEST)
+
     user.update_password(new_password)
     user.save()
     UserActivity.create_activity(user, activity="CHANGE_PASSWORD", discription="")
@@ -444,6 +452,13 @@ def get_user_profile_data(user):
         dict: Dictionary containing user profile data and base64 encoded image
     """
     profile = user.profile_id
+    join_date = profile.join_date.strftime('%Y-%m-%d')
+    url = str(profile.profile_url)
+    url = url.replace(
+    f"Uploaded_Files/{user.user_id}/profile/profile-pic-",
+    "")
+
+
 
     return {
         'user_id': user.user_id,
@@ -455,10 +470,11 @@ def get_user_profile_data(user):
         'email': profile.email,
         'facebook': profile.facebook,
         'whatsapp': profile.whatsapp,
-        'join_date': profile.join_date,
+        'join_date': join_date,
         'about': profile.about,
         'dob': profile.dob,
         'sex': profile.sex,
+        'profile_picture': url,
     }
 
 

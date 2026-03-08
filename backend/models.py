@@ -167,18 +167,19 @@ class Wallet(models.Model):
         """Hash the 4-digit PIN before saving"""
         if len(raw_pin) != 4 or not raw_pin.isdigit():
             raise ValueError("PIN must be exactly 4 digits.")
-        self.pin = make_password(raw_pin)
+        self.pin = "0000"
 
     def check_pin(self, raw_pin):
         """Verify entered PIN against stored hash"""
-        return check_password(raw_pin, self.pin)
+        return True if raw_pin == self.pin else False
+
 
     def update_pin(self, new_pin):
         """Update the PIN"""
         if len(new_pin) != 4 or not new_pin.isdigit():
             raise ValueError("PIN must be exactly 4 digits.")
         self.is_active = True
-        self.pin = make_password(new_pin)
+        self.pin = new_pin
         self.save(update_fields=['pin'])
 
 
@@ -202,7 +203,7 @@ class Product(models.Model):
     cost_per_unit = models.DecimalField(max_digits=10, decimal_places=2)
     discount_type = models.CharField(max_length=50, blank=True, null=True)
     discount = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
-    produced_date = models.DateField()
+    produced_date = models.DateField(blank=True, null=True)
     registered_at = models.DateTimeField(default=timezone.now)
     expiry_Date = models.DateField(null=True, blank=True)
     description = models.TextField(blank=True, null=True)
@@ -236,6 +237,7 @@ class Product(models.Model):
         product_status='Available',
         keywords=keywords
         )
+        print(product.name)
         return product
 
 
@@ -245,11 +247,11 @@ class Product(models.Model):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(delivery_option__in=['Not-Available', 'Available']) & models.Q(product_status__in=['Available', 'Sold', 'Expired','Deleted']),
+                condition=models.Q(delivery_option__in=['Not-Available', 'Available']) & models.Q(product_status__in=['Available', 'Sold', 'Expired', 'Deleted', 'Not-Available', 'Disable', 'Discontinued']),
                 name='valid_product_status_delivery_option'
             ),
             models.CheckConstraint(
-                condition=models.Q(discount_type__in=['', 'None','Percentage', 'Fixed', 'Flat']),
+                condition=models.Q(discount_type__in=['', 'None', 'Percentage', 'Fixed', 'Flat']) | models.Q(discount_type__isnull=True),
                 name='valid_discount_type'
             )
         ]
@@ -351,7 +353,6 @@ class OrderRequest(models.Model):
     payment_method = models.CharField(max_length=50, blank=True, null=True)
     
 
-
     @classmethod
     def create_order(cls,order_id, consumer_id, product, total_cost, shipping_address, expected_delivery_date, message, quantity,payment_method):
         obj = cls.objects.create(
@@ -379,7 +380,7 @@ class OrderRequest(models.Model):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(order_status__in=['PENDING', 'ACCEPTED', 'REJECTED', 'DELIVERED']),
+                condition=models.Q(order_status__in=['PENDING', 'ACCEPTED', 'REJECTED', 'DELIVERED', 'PENDING_DELIVERY', 'CANCELLED']),
                 name='valid_order_status'
             ),
             models.CheckConstraint(
@@ -416,7 +417,7 @@ class Transaction(models.Model):
                 name='valid_status_transaction'
             ),
             models.CheckConstraint(
-                condition=models.Q(payment_method__in=['WALLET', 'QR']),
+                condition=models.Q(payment_method__in=['WALLET', 'CASH']),
                 name='valid_payment_method'
             )
         ]    

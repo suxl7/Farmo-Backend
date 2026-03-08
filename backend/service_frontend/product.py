@@ -14,6 +14,7 @@ from rest_framework.permissions import AllowAny
 import json
 import secrets
 
+
 ##########################################################################################
 #                            Add Product Start
 ##########################################################################################
@@ -45,27 +46,45 @@ def add_product_FromAdmin(request):
 
 
 def handle_product_creation(user_id, data):
-        print(1)
+   
         name             = data.get('product_name')
         product_type     = data.get('product_type')   # ✅ renamed from category
-        is_organic       = data.get('is_organic')
+        is_organic       = data.get('is_organic', False)
         product_unit     = data.get('unit')
         quantity_available = data.get('quantity')
         cost_per_unit    = data.get('cost_per_unit')
         discount_type    = data.get('discount_type')
         discount         = data.get('discount')
         produced_date_str = data.get('produced_date')
-        expired_at       = data.get('expiry_date')
+        expired_at = parse_date(data.get('expiry_date')) if data.get('expiry_date') else None
         description      = data.get('description')
         delivery_option  = data.get('delivery_options')
         product_type     = data.get('product_type')
         keywords        = data.get('keywords')
-
+        print(data)
         produced_date = parse_date(produced_date_str) if produced_date_str else None
 
+        if str(delivery_option).lower() not in ['available']:
+            delivery_option = 'Not-Available'
         
+        product_unit = str(product_unit).lower()
 
-        print(2)
+        match product_unit:
+            case "kg" | "kilogram":
+                product_unit = "kg"
+            case "g" | "gram":
+                product_unit = "g"
+            case "l" | "litre":
+                product_unit = "l"
+            case "ml" | "millilitre":
+                product_unit = "ml"
+            case "pcs" | "piece":
+                product_unit = "pcs"
+            case _:
+                # default case
+                product_unit = product_unit
+
+        
         # ── Validate required fields ──────────────────────────────────────────
         required = {
             'name': name,
@@ -119,7 +138,6 @@ def handle_product_creation(user_id, data):
         except Users.DoesNotExist:
             return Response({'error': 'Invalid user-id'}, status=status.HTTP_404_NOT_FOUND)
 
-        print(3)
         # ── Create product ────────────────────────────────────────────────────
         product = Product.create_product(
             user=user,
@@ -131,13 +149,16 @@ def handle_product_creation(user_id, data):
             discount_type=discount_type,
             discount=discount,
             product_unit=product_unit,
+            produced_date=produced_date,
+            expiry_Date=expired_at,
             description=description,
             delivery_option=delivery_option,
             keywords=keywords
         )
 
+        print("Add Product Succesful")
         UserActivity.create_activity(user, activity="ADD_PRODUCT", discription="")
-        print(5)
+        
         return Response({
             'message': 'Product created successfully',
             'product_id': product.p_id,
@@ -175,9 +196,6 @@ def update_category_file(product_type):
         # Write back to file (pretty format)
         with open(filename, "w") as f:
             json.dump(data, f, indent=2)
-
-    print(4)  
-    print("from add product")
     return key
 
 # Example usage
@@ -185,9 +203,42 @@ def update_category_file(product_type):
 ##############################################################################################
 ##############################################################################################
 
+@api_view(['GET'])
+@permission_classes([AllowAny, IsFarmer])
+def get_product_for_update(request, pid):
+    """
+    Get product data for updating.
+    """
+    user_id = request.headers.get('user-id')
+    #p_id = request.data.get('p_id')
+    
+    try:
+        product = Product.objects.get(p_id=pid, user_id__user_id=user_id)
+    except Product.DoesNotExist:
+        return Response({
+            'error': 'Product not found or you do not have permission to view it'
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    return Response({
+        'name': product.name,
+        'product_type': product.product_type,
+        'is_organic': product.is_organic,
+        'quantity_available': str(product.quantity_available),
+        'cost_per_unit': str(product.cost_per_unit),
+        'discount_type': product.discount_type,
+        'discount': str(product.discount) if product.discount else None,
+        'expiry_Date': product.expiry_Date.strftime('%Y-%m-%d') if product.expiry_Date else None,
+        'description': product.description,
+        'delivery_option': product.delivery_option,
+        'keywords': product.keywords or []
+    }, status=status.HTTP_200_OK)
+
+##############################################################################################
+##############################################################################################
+
 @api_view(['PUT'])
-@permission_classes([HasValidTokenForUser, IsFarmer])
-def update_product(request, pid):
+@permission_classes([AllowAny, IsFarmer])
+def update_product(request):
     """
     Update product information (JSON data only, not media).
     
@@ -195,24 +246,35 @@ def update_product(request, pid):
     delete_product_media endpoint for removal.
     """
     user_id = request.headers.get('user-id')
-    
+    pid = request.data.get('p_id')
+
     try:
-        product = Product.objects.get(pid=pid, user_id__user_id=user_id)
+        product = Product.objects.get(p_id=pid, user_id__user_id=user_id)
     except Product.DoesNotExist:
         return Response({
             'error': 'Product not found or you do not have permission to modify it'
         }, status=status.HTTP_404_NOT_FOUND)
     
+    # Normalize delivery_option
+    if 'delivery_option' in request.data:
+        delivery_value = str(request.data.get('delivery_option')).lower().replace(' ', '').replace('_', '')
+        if delivery_value in ['notavailable', 'not-available']:
+            request.data['delivery_option'] = 'Not-Available'
+    
     # Update allowed fields
     updatable_fields = [
-        'name', 'category', 'is_organic', 'quantity_available', 
+        'name', 'product_type', 'is_organic', 'quantity_available',
         'cost_per_unit', 'discount_type', 'discount', 'description', 
-        'delivery_option', 'produced_date', 'expiry_Date'
+        'delivery_option', 'expiry_Date'
     ]
     
     for field in updatable_fields:
         if field in request.data:
-            setattr(product, field, request.data[field])
+            value = request.data[field]
+            # Normalize discount_type to match constraint: '', 'None', 'Percentage', 'Fixed', 'Flat'
+            if field == 'discount_type' and value:
+                value = value.capitalize() if value.lower() in ['percentage', 'fixed', 'flat'] else value
+            setattr(product, field, value)
     
     product.save()
     
@@ -244,7 +306,7 @@ def delete_product_media(request, pid):
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        product = Product.objects.get(pid=pid, user_id__user_id=user_id)
+        product = Product.objects.get(p_id=pid, user_id__user_id=user_id)
     except Product.DoesNotExist:
         return Response({
             'error': 'Product not found or you do not have permission to modify it'
@@ -304,7 +366,7 @@ def get_product_media_count(request, pid):
     user_id = request.headers.get('user-id')
     
     try:
-        product = Product.objects.get(pid=pid, user_id__user_id=user_id)
+        product = Product.objects.get(p_id=pid, user_id__user_id=user_id)
     except Product.DoesNotExist:
         return Response({
             'error': 'Product not found or you do not have permission to view it'
@@ -414,408 +476,6 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from django.db.models import Avg
 
-
-# ─────────────────────────────────────────────
-# CONSTANTS
-# ─────────────────────────────────────────────
-PAGE_SIZE          = 10
-EXPIRY_RADIUS_DAYS = 30   # ≤ 30 days left  → local (same municipal)
-EXPIRY_WIDE_DAYS   = 90   # ≤ 90 days left  → district radius
-                           # > 90 days left  → province/country radius
-
-VALID_FILTERS = {"all", "connectiononly", "nearme"}
-
-
-# ─────────────────────────────────────────────
-# HELPERS
-# ─────────────────────────────────────────────
-
-def _serialize_product(product: Product) -> dict:
-    """Convert a Product ORM object to the API response shape."""
-    today = timezone.now().date()
-
-    if product.product_status == "Sold":
-        status = "out_of_stock"
-    elif product.expiry_Date and product.expiry_Date <= today:
-        status = "inactive"
-    elif product.quantity_available <= 0:
-        status = "out_of_stock"
-    else:
-        status = "active"
-
-    media = product.media_url or []
-    if isinstance(media, dict):
-        media = list(media.values())
-    image = media[0] if media else ""
-    rating = ProductRating.objects.filter(p_id=product).aggregate(
-        avg_rating=Avg('score')
-    )['avg_rating'] or 0.0
-
-    return {
-        "id":        product.p_id,
-        "name":      product.name,
-        "product_type":  product.product_type,       # ✅ fixed
-        "status":    status,
-        "discount_type": product.discount_type,
-        "discount":  str(product.discount),
-        "is_organic": product.is_organic,
-        "price":     str(product.cost_per_unit),
-        "priceUnit": "Rs.",
-        "stock":     str(product.quantity_available),
-        "stockUnit": product.product_unit.lower(),
-        "image":     image,
-        "rating":   str(rating),
-    }
-
-
-def _active_products_qs():
-    """Base queryset: only Available, in-stock, non-expired products."""
-    today = timezone.now().date()
-    return Product.objects.filter(
-        product_status="Available",
-        quantity_available__gt=0,
-    ).filter(
-        Q(expiry_Date__isnull=True) | Q(expiry_Date__gt=today)
-    )
-
-
-def _get_connection_farmer_ids(user: Users) -> list:
-    """Return user_ids of ACCEPTED connections where the target is a Farmer/VerifiedFarmer."""
-    accepted = Connections.objects.filter(
-        user=user, status="ACCEPTED"
-    ).select_related("target_user__profile_id")
-
-    return [
-        conn.target_user.user_id
-        for conn in accepted
-        if conn.target_user.profile_id.user_type in ("Farmer", "VerifiedFarmer")
-    ]
-
-
-def _get_track_stats(user: Users):
-    """
-    Returns:
-        category_scores – {category_slug: total_score}
-        product_scores  – {farm_product_id: total_score}
-    """
-    tracks = ProductScore.objects.filter(user_id=user).select_related("farmProduct")
-    category_scores = defaultdict(int)
-    product_scores  = defaultdict(int)
-
-    for t in tracks:
-        score = t.score or 0
-        if t.product_catagory:
-            category_scores[t.product_catagory] += score
-        if t.farmProduct_id:
-            product_scores[t.farmProduct_id] += score
-
-    return dict(category_scores), dict(product_scores)
-
-
-def _products_from_connections(farmer_ids: list) -> list:
-    """
-    Pull products from connected farmers.
-    Active (newest first) → inactive/sold pushed to bottom.
-    """
-    if not farmer_ids:
-        return []
-
-    today = timezone.now().date()
-    qs = Product.objects.filter(
-        user_id__in=farmer_ids
-    ).exclude(product_status="Sold").select_related("user_id__profile_id")
-
-    active = qs.filter(
-        product_status="Available",
-        quantity_available__gt=0,
-    ).filter(
-        Q(expiry_Date__isnull=True) | Q(expiry_Date__gt=today)
-    ).order_by("-registered_at")
-
-    inactive = qs.exclude(
-        p_id__in=active.values_list("p_id", flat=True)
-    ).order_by("-registered_at")
-
-    return list(active) + list(inactive)
-
-
-def _products_by_track(user: Users, category_scores: dict, product_scores: dict,
-                       exclude_ids: set) -> list:
-    """
-    Products matching the user's tracked categories / farm-products.
-    Ordered by descending score.
-    """
-    if not category_scores and not product_scores:
-        return []
-
-    base_qs = _active_products_qs().exclude(p_id__in=exclude_ids)
-    ranked_categories = sorted(category_scores, key=category_scores.get, reverse=True)
-    ranked_fp_ids     = sorted(product_scores,  key=product_scores.get,  reverse=True)
-
-    seen    = set()
-    ordered = []
-
-    for fp_id in ranked_fp_ids:
-        for prod in base_qs.filter(
-            keywords__contains=[fp_id]
-        ).order_by("-registered_at")[:20]:
-            if prod.p_id not in seen:
-                seen.add(prod.p_id)
-                ordered.append(prod)
-
-    for cat in ranked_categories:
-        for prod in base_qs.filter(product_type=cat).order_by("-registered_at")[:20]:  # ✅ fixed
-            if prod.p_id not in seen:
-                seen.add(prod.p_id)
-                ordered.append(prod)
-
-    return ordered
-
-
-def _products_by_location(user_profile, exclude_ids: set) -> list:
-    """
-    Geo-radius products sorted by expiry logic:
-      - Short expiry (≤30d) → same municipal  (local urgency)
-      - Medium expiry (≤90d) → same district
-      - Long/no expiry       → same province
-      - Nationwide fallback  → tools & equipment only
-    """
-    today      = timezone.now().date()
-    base_qs    = _active_products_qs().exclude(p_id__in=exclude_ids)
-    short_exp  = today + timedelta(days=EXPIRY_RADIUS_DAYS)
-    medium_exp = today + timedelta(days=EXPIRY_WIDE_DAYS)
-
-    local = base_qs.filter(
-        user_id__profile_id__municipal=user_profile.municipal,
-        expiry_Date__lte=short_exp,
-        expiry_Date__gt=today,
-    ).order_by("expiry_Date")
-
-    district = base_qs.filter(
-        user_id__profile_id__district=user_profile.district,
-    ).filter(
-        Q(expiry_Date__gt=short_exp, expiry_Date__lte=medium_exp) |
-        Q(expiry_Date__isnull=True)
-    ).exclude(
-        p_id__in=local.values_list("p_id", flat=True)
-    ).order_by("expiry_Date")
-
-    province = base_qs.filter(
-        user_id__profile_id__province=user_profile.province,
-    ).filter(
-        Q(expiry_Date__gt=medium_exp) | Q(expiry_Date__isnull=True)
-    ).exclude(
-        p_id__in=local.values_list("p_id", flat=True)
-    ).exclude(
-        p_id__in=district.values_list("p_id", flat=True)
-    ).order_by("expiry_Date")
-
-    nationwide = base_qs.filter(
-        product_type="tool-equipment"                           # ✅ fixed
-    ).exclude(
-        p_id__in=local.values_list("p_id", flat=True)
-    ).exclude(
-        p_id__in=district.values_list("p_id", flat=True)
-    ).exclude(
-        p_id__in=province.values_list("p_id", flat=True)
-    ).order_by("expiry_Date")
-
-    return list(local) + list(district) + list(province) + list(nationwide)
-
-
-def _merge_and_deduplicate(*lists) -> list:
-    """Merge multiple product lists preserving order, removing duplicates."""
-    seen   = set()
-    merged = []
-    for lst in lists:
-        for product in lst:
-            if product.p_id not in seen:
-                seen.add(product.p_id)
-                merged.append(product)
-    return merged
-
-
-def _paginate(items: list, page: int) -> tuple:
-    """Returns (page_items, has_prev, has_next, total_pages). Page is 1-indexed."""
-    total       = len(items)
-    total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
-    page        = max(1, min(page, total_pages))
-    start       = (page - 1) * PAGE_SIZE
-    return (
-        items[start: start + PAGE_SIZE],
-        page > 1,
-        page < total_pages,
-        total_pages,
-    )
-
-
-# ─────────────────────────────────────────────
-# FILTER STRATEGIES
-# ─────────────────────────────────────────────
-
-def _feed_all(user: Users, user_profile) -> list:
-    """Full ranked feed: connections → tracked interests → location."""
-    farmer_ids          = _get_connection_farmer_ids(user)
-    connection_products = _products_from_connections(farmer_ids)
-    seen_ids            = {p.p_id for p in connection_products}
-
-    category_scores, product_scores = _get_track_stats(user)
-    track_products = _products_by_track(user, category_scores, product_scores, seen_ids)
-    seen_ids.update(p.p_id for p in track_products)
-
-    location_products = _products_by_location(user_profile, seen_ids)
-
-    return _merge_and_deduplicate(connection_products, track_products, location_products)
-
-
-def _feed_connection_only(user: Users) -> list:
-    """Only products from accepted farmer connections (active first, then inactive)."""
-    farmer_ids = _get_connection_farmer_ids(user)
-    return _products_from_connections(farmer_ids)
-
-
-def _feed_near_me(user_profile) -> list:
-    """Only location-based products; no connection or track filtering applied."""
-    return _products_by_location(user_profile, exclude_ids=set())
-
-
-# ─────────────────────────────────────────────
-# MAIN VIEW
-# ─────────────────────────────────────────────
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def get_product_feed(request):
-    """
-    POST /api/product/feed/
-
-    Headers:
-        user-id   (required)
-
-    Body (JSON):
-        page    : int     – default 1
-        filter  : str     – "all" | "connectiononly" | "nearme"   default "all"
-        search_term : str
-
-    Response:
-    {
-        "page":        1,
-        "total_pages": 4,
-        "prev_page":   false,
-        "next_page":   true,
-        "filter":      "all",
-        "products":    [ { ...product fields... } ]
-    }
-    """
-
-    # ── Auth / user lookup ───────────────────
-    user_id = request.headers.get("user-id")
-    if not user_id:
-        return Response({"error": "user-id header is required."}, status=400)
-
-    try:
-        user = Users.objects.select_related("profile_id").get(user_id=user_id)
-    except Users.DoesNotExist:
-        return Response({"error": "User not found."}, status=404)
-
-    if user.profile_status != "ACTIVATED":
-        return Response({"error": "Account is not active."}, status=403)
-
-    # ── Request params ───────────────────────
-    try:
-        page = int(request.data.get("page", 1))
-    except (ValueError, TypeError):
-        page = 1
-
-
-    feed_filter = str(request.data.get("filter", "all")).lower().strip()
-    if feed_filter not in VALID_FILTERS:
-        return Response(
-            {"error": f"Invalid filter. Valid options: {', '.join(sorted(VALID_FILTERS))}."},
-            status=400,
-        )
-
-    user_profile = user.profile_id
-
-    # ── Build product list based on chosen filter ─
-    if feed_filter == "connectiononly":
-        all_products = _feed_connection_only(user)
-
-    elif feed_filter == "nearme":
-        all_products = _feed_near_me(user_profile)
-
-    else:  # "all"
-        all_products = _feed_all(user, user_profile)
-
-    # ── Apply search filter ──────────────────
-    search_term = request.data.get("search_term", "").strip()
-    if search_term:
-        search_lower = search_term.lower()
-        
-        # Search in current filtered products
-        filtered_products = [
-            p for p in all_products 
-            if search_lower in p.name.lower() 
-            or (p.product_type and search_lower in p.product_type.lower())
-        ]
-        
-        # If no results, expand search by location priority
-        if not filtered_products:
-            base_qs = _active_products_qs()
-            
-            # 1. Search in municipal
-            local = base_qs.filter(
-                user_id__profile_id__municipal=user_profile.municipal
-            ).filter(
-                Q(name__icontains=search_term) | Q(product_type__icontains=search_term)
-            )
-            filtered_products = list(local)
-            
-            # 2. If not found, search in district
-            if not filtered_products:
-                district = base_qs.filter(
-                    user_id__profile_id__district=user_profile.district
-                ).filter(
-                    Q(name__icontains=search_term) | Q(product_type__icontains=search_term)
-                )
-                filtered_products = list(district)
-            
-            # 3. If not found, search in province
-            if not filtered_products:
-                province = base_qs.filter(
-                    user_id__profile_id__province=user_profile.province
-                ).filter(
-                    Q(name__icontains=search_term) | Q(product_type__icontains=search_term)
-                )
-                filtered_products = list(province)
-            
-            # 4. If still not found, search nationwide
-            if not filtered_products:
-                nationwide = base_qs.filter(
-                    Q(name__icontains=search_term) | Q(product_type__icontains=search_term)
-                )
-                filtered_products = list(nationwide)
-        
-        all_products = filtered_products
-    
-    # If less than PAGE_SIZE, fill with nearby products
-    if len(all_products) < PAGE_SIZE:
-        seen_ids = {p.p_id for p in all_products}
-        filler = _products_by_location(user_profile, seen_ids)
-        all_products.extend(filler[:PAGE_SIZE - len(all_products)])
-
-    # ── Paginate ─────────────────────────────
-    page_products, has_prev, has_next, total_pages = _paginate(all_products, page)
-
-    # ── Serialize & respond ──────────────────
-    return Response({
-        "page":        page,
-        "total_pages": total_pages,
-        "prev_page":   has_prev,
-        "next_page":   has_next,
-        "filter":      feed_filter,
-        "products":    [_serialize_product(p) for p in page_products],
-    }, status=200)
 ##########################################################################################
 #                            Product Management End
 ##########################################################################################
@@ -848,8 +508,9 @@ def product_filter_admin(request):
     farmer         = request.data.get('farmer')
     product_status = request.data.get('product_status')
     page_number    = request.data.get('page', 1)
+    # print(product_status)
 
-    VALID_STATUSES = ['all', 'All', 'Available', 'Sold', 'Expired', 'Deleted']
+    VALID_STATUSES = ['all', 'All', 'Available', 'Sold', 'Expired', 'Deleted', 'Not-Available', 'Not Available']
 
     query = Q()
 
@@ -858,7 +519,7 @@ def product_filter_admin(request):
         query &= Q(p_id__icontains=search_term) | Q(name__icontains=search_term)
 
     # ── Farmer ───────────────────────────────────────────────────────────────
-    if farmer:                                   # ✅ only filter when farmer is non-empty
+    if farmer:
         query &= (
             Q(user_id__user_id__icontains=farmer)
             | Q(user_id__profile_id__f_name__icontains=farmer)
@@ -872,13 +533,9 @@ def product_filter_admin(request):
 
     # ── Product Status ───────────────────────────────────────────────────────
     if product_status:
-        if product_status not in VALID_STATUSES:
-            return Response(
-                {"error": f"Invalid product_status. Choose from: {VALID_STATUSES}"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        if product_status.lower() != 'all':      # ✅ case-insensitive check
-            query &= Q(product_status=product_status)
+        status_lower = product_status.lower().replace('_', '-').replace(' ', '-')
+        if status_lower != 'all':
+            query &= Q(product_status='Not-Available') if status_lower == 'not-available' else Q(product_status=product_status)
 
     # ── Query ─────────────────────────────────────────────────────────────────
     products  = Product.objects.filter(query).order_by('-registered_at')
@@ -918,24 +575,34 @@ def product_filter_admin(request):
 ##########################################################################################
 #                             Product Details Start
 ##########################################################################################
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def product_details_for_users(request):
     from django.db.models import Avg, Count
+    from backend.utils.score_tracker import track_product_view
     
     p_id = request.data.get('p_id')
+    user_id = request.headers.get('user-id')
     
     try:
         product = Product.objects.select_related('user_id__profile_id').get(p_id=p_id)
         farmer = product.user_id
-        print(farmer.user_id)
+        
+        # Track view if user is not the owner
+        if user_id and user_id != farmer.user_id:
+            try:
+                user = Users.objects.get(user_id=user_id)
+                track_product_view(user, product, 2)
+            except Users.DoesNotExist:
+                pass
         
         # Get rating stats
         rating_count = ProductRating.objects.filter(p_id=product).count()
         avg_rating = ProductRating.objects.filter(p_id=product).aggregate(Avg('score'))['score__avg']
         
         # Get sold count
-        sold_count = OrderRequest.objects.filter(product=product, order_status='ACCEPTED').count()
+        sold_count = OrderRequest.objects.filter(product=product, order_status='DELIVERED').count()
         
         # Format sold count
         if sold_count >= 1000000:
@@ -963,7 +630,7 @@ def product_details_for_users(request):
             "discount_value": str(product.discount) if product.discount else None,
             "description": product.description,
             "registered_date": product.registered_at.strftime("%d-%m-%Y"),
-            "produced_date": product.produced_date.strftime("%d-%m-%Y"),
+            "produced_date": product.produced_date.strftime("%d-%m-%Y") if product.produced_date else None,
             "expiry_date": product.expiry_Date.strftime("%d-%m-%Y") if product.expiry_Date else None,
             "rating": round(avg_rating, 1) if avg_rating else 0,
             "rating_count": rating_count,
@@ -971,7 +638,9 @@ def product_details_for_users(request):
             "farmer_name": farmer.get_full_name_from_userModel(),
             "farmer_location": f"{farmer.profile_id.municipal}-{product.user_id.profile_id.ward}, {product.user_id.profile_id.district}",
             "no_of_media": len(media_list),
+            "delivery_option": product.delivery_option
         }
+    
         
         return Response(data, status=status.HTTP_200_OK)
         
@@ -979,4 +648,129 @@ def product_details_for_users(request):
         return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
 ##########################################################################################
 #                             Product Details End
+##########################################################################################
+##########################################################################################
+#                             My Product List start
+##########################################################################################
+@api_view(['POST'])
+@permission_classes([AllowAny, IsFarmer])
+def my_product_list(request):
+    from django.core.paginator import Paginator
+    from datetime import datetime
+    from django.db.models import Avg
+    
+    user_id = request.headers.get('user-id')
+    filter_status = request.data.get('filter', 'all')
+    page = request.data.get('page', 1)
+    search_for = request.data.get('search', '')
+    date_from = request.data.get('date_from', None)
+    date_to = request.data.get('date_to', None)
+    sort_by = request.data.get('sort_by', 'newest')
+    # print(filter_status)
+    if str(filter_status).lower() not in ['all', 'available', 'sold', 'expired', 'deleted', 'not-available', 'not available']:
+        return Response({'error': 'Invalid filter'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        user = Users.objects.get(user_id=user_id)
+        query = Q(user_id=user)
+        
+        # Exclude deleted products unless filter is 'deleted'
+        if str(filter_status).lower() == 'deleted':
+            query &= Q(product_status__iexact='deleted')
+        elif str(filter_status).lower() == 'all':
+            query &= ~Q(product_status__iexact='deleted')
+        else:
+            query &= Q(product_status__iexact=filter_status)
+        
+        if search_for:
+            query &= (Q(name__icontains=search_for) | Q(p_id__icontains=search_for) | Q(product_type__icontains=search_for))
+        
+        if date_from and date_to:
+            date_from_obj = datetime.strptime(date_from, '%d-%m-%Y')
+            date_to_obj = datetime.strptime(date_to, '%d-%m-%Y')
+            query &= Q(registered_at__date__range=(date_from_obj.date(), date_to_obj.date()))
+        
+        products = Product.objects.filter(query)
+        
+        if sort_by == 'oldest':
+            products = products.order_by('registered_at')
+        elif sort_by == 'price_low':
+            products = products.order_by('cost_per_unit')
+        elif sort_by == 'price_high':
+            products = products.order_by('-cost_per_unit')
+        elif sort_by == 'name':
+            products = products.order_by('name')
+        else:
+            products = products.order_by('-registered_at')
+        
+        paginator = Paginator(products, 50)
+        page_obj = paginator.get_page(page)
+        
+        data = []
+        for p in page_obj:
+            rating = ProductRating.objects.filter(p_id=p).aggregate(Avg('score'))['score__avg']
+            sold_count = OrderRequest.objects.filter(product=p, order_status='DELIVERED').count()
+            
+            data.append({
+                "p_id": p.p_id,
+                "name": p.name,
+                "product_type": p.product_type,
+                "cost_per_unit": str(p.cost_per_unit),
+                "quantity_available": str(p.quantity_available),
+                "product_status": p.product_status,
+                "registered_at": p.registered_at.strftime('%d-%m-%Y'),
+                "rating": round(rating, 1) if rating else 0,
+                "sold_count": sold_count
+            })
+        
+        return Response({
+            "total_pages": paginator.num_pages,
+            "total_products": paginator.count,
+            "current_page": page_obj.number,
+            "has_next": page_obj.has_next(),
+            "has_previous": page_obj.has_previous(),
+            "products": data
+        }, status=status.HTTP_200_OK)
+        
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+##########################################################################################
+#                             My Product List End
+##########################################################################################
+##########################################################################################
+#                             My Product Available/Not-Available Start
+##########################################################################################
+@api_view(['POST'])
+@permission_classes([AllowAny, IsFarmer])
+def product_availability_toggle(request):
+    user_id = request.headers.get('user-id')
+    p_id = request.data.get('p_id')
+    action = request.data.get('action')  # 'available' or 'not_available'
+
+    try:
+        user = Users.objects.get(user_id=user_id)
+        product = Product.objects.get(p_id=p_id, user_id=user)
+
+        if str(action).lower() == 'available' and product.product_status == 'Not-Available':
+            product.product_status = 'Available'
+        elif str(action).lower() in ['not_available', 'not available', 'not-available'] and product.product_status == 'Available':
+            product.product_status = 'Not-Available'
+        else:
+            return Response({'error': 'Invalid action'}, status=status.HTTP_400_BAD_REQUEST)
+
+        product.save()
+
+        return Response({'message': f'Product status updated to {action}'}, status=status.HTTP_200_OK)
+
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Product.DoesNotExist:
+        return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+##########################################################################################
+#                             My Product Available/Not-Available End
 ##########################################################################################

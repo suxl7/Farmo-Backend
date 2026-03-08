@@ -2,6 +2,8 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
 from backend.models import Wallet, Transaction, UsersProfile, Users
+from backend.utils.score_tracker import track_product_view
+
 
 
 @receiver(post_save, sender='backend.Users')
@@ -17,7 +19,7 @@ def create_user_wallet(sender, instance, created, **kwargs):
 			is_active=False
 		)
 	
-    	
+	
 @receiver(post_save, sender='backend.OrderRequest')
 def transaction_created_for_order(sender, instance, created, **kwargs):
 	'''Automatically create a transaction when a new order is created'''
@@ -44,6 +46,11 @@ def transaction_created_for_order(sender, instance, created, **kwargs):
 				updated_at=None,
 				initiated_by= instance.consumer_id
 			)
+
+		elif instance.order_status == 'DELIVERED':
+			track_product_view(instance.product.user_id, instance.product.p_id, 4)
+	
+
 	except Exception as e:
 		raise Exception(f"Failed to create transaction.")
 
@@ -54,3 +61,4 @@ def transaction_created_for_order(sender, instance, created, **kwargs):
 def update_user_profile_status(sender, instance, created, **kwargs):
 	'''Automatically update the user profile status when a new verification is created'''
 	u = 'p'
+

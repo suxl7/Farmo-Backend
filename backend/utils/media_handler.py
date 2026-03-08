@@ -140,6 +140,48 @@ class FileManager:
             return {'success': False, 'error': f'Failed to delete file: {str(e)}'}
 
 
+    def very_high_compresser(self, image_path, output_path, max_dimension=100):
+        """
+        Compress image to 70x70 to 100x100 pixels for profile search list.
+        Runs in background thread and saves to output_path.
+        
+        Args:
+            image_path: Path to source image
+            output_path: Path to save compressed image
+            max_dimension: Maximum width/height (default 100)
+        
+        Returns:
+            dict: {'success': True, 'compressing': True} immediately
+        """
+        thread = threading.Thread(
+            target=self._compress_thumbnail_background,
+            args=(image_path, output_path, max_dimension),
+            daemon=True
+        )
+        thread.start()
+        return {'success': True, 'compressing': True, 'output_path': output_path}
+
+
+    def _compress_thumbnail_background(self, image_path, output_path, max_dimension):
+        """Background thread: compress image to thumbnail size."""
+        try:
+            img = cv2.imread(image_path)
+            if img is None:
+                print(f"[Thumbnail] Cannot read {image_path}")
+                return
+            
+            h, w = img.shape[:2]
+            scale = min(max_dimension / w, max_dimension / h)
+            new_w = int(w * scale)
+            new_h = int(h * scale)
+            
+            resized = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            cv2.imwrite(output_path, resized, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            print(f"[Thumbnail] Complete: {output_path}")
+        except Exception as e:
+            print(f"[Thumbnail] Error: {str(e)}")
+
+
     def list_files(self, category):
         """
         List all files in a category.

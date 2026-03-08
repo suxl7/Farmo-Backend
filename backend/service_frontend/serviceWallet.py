@@ -71,6 +71,25 @@ def req_wallet_by_admin(request):
 ##########################################################################################
 #                            Change Wallet Pin Start
 ##########################################################################################
+@api_view(['POST'])
+@permission_classes([AllowAny, IsFarmerOrConsumer])
+def setup_wallet_pin(request):
+    user_id = request.headers.get('user-id')
+    pin = request.data.get('pin')
+    user = Users.objects.get(user_id=user_id, profile_status = 'ACTIVATED')
+
+    if not pin and len(pin) != 4 and not pin.isdigit():
+        return Response({'error': 'Enter 4 digit Pin'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    wallet = Wallet.objects.get(user_id=user)
+    if wallet.is_active:
+        return Response({'error': 'Wallet is already active'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    wallet.update_pin(pin)
+    wallet.is_active = True
+    wallet.save()
+    return Response({'message': 'Wallet PIN set successfully'}, status=status.HTTP_200_OK)
+                    
 
 @api_view(['POST'])
 @permission_classes([AllowAny, IsFarmerOrConsumer])
@@ -163,4 +182,89 @@ def forget_wallet_pin(request):
     return Response({'message': 'Wallet PIN updated successfully'}, status=status.HTTP_200_OK)
 
 #                            forget_wallet_pin End
+##########################################################################################
+
+##########################################################################################
+#                           Wallet PAge Start
+##########################################################################################
+@api_view(['POST'])
+@permission_classes([HasValidTokenForUser, IsFarmerOrConsumer])
+def wallet_for_page(request):
+    user_id = request.headers.get('user-id')
+
+    try:
+        user = Users.objects.get(user_id=user_id)
+        wallet = Wallet.objects.get(user_id=user)
+    except (Wallet.DoesNotExist, Users.DoesNotExist):
+        return Response({'error': 'Wallet not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if not wallet.is_active:
+        return Response({'error': 'Wallet is not active. Please, change your wallet pin.'}, status=status.HTTP_304_NOT_MODIFIED)
+    
+    response_data = {
+        'balance': str(wallet.balance),
+        'today_expense': get_todays_expense(user),
+    }
+    if user.profile_id.user_type in ['Farmer', 'VerifiedFarmer']:
+        response_data['today_income'] = get_todays_income(user)
+
+    return Response({
+        'balance': response_data['balance'],
+            'today_expense': response_data['today_expense'],
+            'today_income': response_data.get('today_income', 0)}, status=status.HTTP_200_OK)
+##########################################################################################
+#                           Wallet PAge End
+##########################################################################################
+
+##########################################################################################
+#                           Wallet Add/Withdraw Start
+##########################################################################################
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def wallet_add_withdraw(request):
+    from decimal import Decimal
+    
+    user_id = request.hearders.get('user-id')
+    action = request.data.get('action')
+    amount = request.data.get('amount')
+    pin = request.data.get('pin')
+    
+    if action not in ['add', 'withdraw']:
+        return Response({'error': 'Invalid action. Must be add or withdraw'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        amount = Decimal(str(amount))
+        if amount <= 0:
+            return Response({'error': 'Amount must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
+    except:
+        return Response({'error': 'Invalid amount'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        user = Users.objects.get(user_id=user_id)
+        wallet = Wallet.objects.get(user_id=user)
+        
+        if not wallet.check_pin(pin):
+            return Response({'error': 'Incorrect PIN'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if action == 'add':
+            wallet.balance += amount
+        else:
+            if wallet.balance < amount:
+                return Response({'error': 'Insufficient balance'}, status=status.HTTP_400_BAD_REQUEST)
+            wallet.balance -= amount
+        
+        wallet.save()
+        
+        return Response({
+            'message': f'Successfully {"added" if action == "add" else "withdrawn"} Rs. {amount}',
+            'new_balance': wallet.balance
+        }, status=status.HTTP_200_OK)
+        
+    except Users.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Wallet.DoesNotExist:
+        return Response({'error': 'Wallet not found'}, status=status.HTTP_404_NOT_FOUND)
+
+##########################################################################################
+#                           Wallet Add/Withdraw End
 ##########################################################################################

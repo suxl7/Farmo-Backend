@@ -51,7 +51,7 @@ VIDEO_MAX_SIZE     = 200 * 1024 * 1024     # 200 MB
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def big_file_upload(request):
-    userid = request.data.get('user_id') or request.headers.get('user-id')
+    userid = request.headers.get('user-id')
     action = request.data.get('action')
 
     print(action)
@@ -454,7 +454,7 @@ def big_file_download(request):
     if subject == 'PROFILE_PICTURE':
         result, status= profile_pic_download(userid=userid)
     elif subject == 'PRODUCT_MEDIA':
-        result, status= product_media_download(userid=userid, product_id=product_id, seq=seq)
+        result, status= product_media_download(product_id=product_id, seq=seq)
     elif subject == 'USER_ID_VERIFICATION_MEDIA':
         result, status= user_id_verification_download(userid=userid, seq=seq)
     else:
@@ -543,39 +543,44 @@ def profile_pic_download(userid):
 # ─────────────────────────────────────────────────────────────
 # PRODUCT MEDIA DOWNLOAD  ← untouched from original
 # ─────────────────────────────────────────────────────────────
-def product_media_download(userid, product_id, seq=1):
+def product_media_download(product_id, seq=1):
     """Download and base64-encode a product media file by sequence number."""
 
     try:
-        product = Product.objects.get(pid=product_id, user_id__user_id=userid)
-        media_list = product.media_url  # Expected: list of dicts with 'serial_no' and 'media_url'
+        product = Product.objects.get(p_id=product_id)
+        media_list = product.media_url or []
 
-        target_media = next((m for m in media_list if m['serial_no'] == int(seq)), None)
+        if not media_list:
+            return {'file': None, 'mime_type': None, 'media_type': None, 'total': 0, 'seq': 0}, status.HTTP_404_NOT_FOUND
+
+        # Find media by serial_no
+        target_media = None
+        for media in media_list:
+            if media.get('serial_no') == int(seq):
+                target_media = media
+                break
 
         if not target_media:
             return {'file': None, 'mime_type': None, 'media_type': None, 'total': len(media_list), 'seq': 0}, status.HTTP_404_NOT_FOUND
 
+        file_path = settings.MEDIA_ROOT + '/' + target_media.get('media_url', '')
 
-        file_path = os.path.join(settings.MEDIA_ROOT, target_media['media_url'])
-
-        with open(file_path, 'rb') as f:
-            encoded_file = base64.b64encode(f.read()).decode('utf-8')
-
-        mime_type, _ = mimetypes.guess_type(file_path)
+        try:
+            with open(file_path, 'rb') as image_file:
+                encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
+            mime_type, _ = mimetypes.guess_type(file_path)
+        except FileNotFoundError:
+            return {'file': None, 'mime_type': None, 'media_type': None, 'total': len(media_list), 'seq': 0}, status.HTTP_404_NOT_FOUND
 
         return {
-            'file': encoded_file,
+            'file': encoded_image,
             'mime_type': mime_type,
-            'media_type': target_media['media_type'],
+            'media_type': target_media.get('media_type'),
             'total': len(media_list),
-            'seq': target_media['serial_no'],
+            'seq': target_media.get('serial_no'),
         }, status.HTTP_200_OK
 
-
     except Product.DoesNotExist:
-        return {'file': None, 'mime_type': None, 'media_type': None, 'total': 0, 'seq': 0}, status.HTTP_404_NOT_FOUND
-
-    except FileNotFoundError:
         return {'file': None, 'mime_type': None, 'media_type': None, 'total': 0, 'seq': 0}, status.HTTP_404_NOT_FOUND
 
     except Exception as e:
@@ -591,19 +596,21 @@ def user_id_verification_download(userid, seq=1):
     """Download and base64-encode a user's ID verification image (front or back)."""
 
     try:
-        verification = Verification.objects.filter(user_id=userid).latest('submission_date')
+        user = Users.objects.get(user_id=userid)
+        verification = Verification.objects.filter(user_id=user).latest('submission_date')
 
         seq = int(seq)
         if seq == 1:
             relative_path = verification.id_front
         elif seq == 2:
             relative_path = verification.id_back
+        elif seq == 3:
+            relative_path = verification.Selfie_with_id
         else:
             relative_path = verification.id_front  # fallback
 
         if not relative_path:
-            return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 2, 'seq': seq}, status.HTTP_404_NOT_FOUND
-
+            return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 0, 'seq': seq}, status.HTTP_404_NOT_FOUND
 
         file_path = os.path.join(settings.MEDIA_ROOT, relative_path)
 
@@ -616,17 +623,19 @@ def user_id_verification_download(userid, seq=1):
             'file': encoded_file,
             'mime_type': mime_type,
             'media_type': 'img',
-            'total': 2,
+            'total': 3,
             'seq': seq,
         }, status.HTTP_200_OK
 
+    except Users.DoesNotExist:
+        return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 0, 'seq': 0}, status.HTTP_404_NOT_FOUND
 
     except Verification.DoesNotExist:
-        return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 2, 'seq': 0}, status.HTTP_404_NOT_FOUND
+        return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 0, 'seq': 0}, status.HTTP_404_NOT_FOUND
 
     except FileNotFoundError:
-        return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 2, 'seq': 0}, status.HTTP_404_NOT_FOUND
+        return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 0, 'seq': 0}, status.HTTP_404_NOT_FOUND
 
     except Exception as e:
         print(f"[user_id_verification_download] Unexpected error: {e}")
-        return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 2, 'seq': 0}, status.HTTP_400_BAD_REQUEST
+        return {'file': None, 'mime_type': None, 'media_type': 'img', 'total': 0, 'seq': 0}, status.HTTP_400_BAD_REQUEST

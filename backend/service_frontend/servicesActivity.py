@@ -10,6 +10,25 @@ from backend.permissions import HasValidTokenForUser
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework.permissions import AllowAny
 
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def change_to_farmer(request):
+    user_id = request.headers.get('user-id')
+    user = Users.objects.get(user_id=user_id)
+    password = request.data.get('password')
+    if not user.check_password(password):
+        return Response({'error': 'Incorrect password'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if user.profile_id.user_type != 'Consumer':
+        user.profile_id.user_type = 'Farmer'
+    elif user.profile_id.user_type != 'VerifiedConsumer':
+        user.profile_id.user_type = 'VerifiedFarmer'
+    else:
+        return Response({'error': 'Invalid user type'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    user.profile_id.save()
+    return Response({'message': 'User type changed successfully'}, status=status.HTTP_200_OK)
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -18,7 +37,6 @@ def check_userid_available(request):
     user_id = request.data.get('user_id')
   
     if not user_id:
-        
         return Response({'status': 1}, status=status.HTTP_200_OK)
     
     """Check existence of user_id in Users model [exists is boolean]"""
@@ -58,9 +76,19 @@ def get_online_status(request):
 @permission_classes([HasValidTokenForUser])
 def get_address(request):
     """Get the address for an order"""
-    userid = request.data.get('user-id')
+    userid = request.data.get('user_id')
+    response = address(userid)
+    return response
     
+@api_view(['POST'])
+@permission_classes([HasValidTokenForUser])
+def get_own_address(request):
+    """Get the address for an order"""
+    userid = request.headers.get('user-id')
+    response = address(userid)
+    return response
 
+def address(userid):
     try:
         user = Users.objects.get(user_id=userid).profile_id
         

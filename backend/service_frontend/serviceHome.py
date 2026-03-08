@@ -37,7 +37,7 @@ def dashboard_fullfillment(request):
             'username':             user.get_full_name_from_userModel(),
            # 'order_received':       str(get_farmer_orderRequests(user)),
             'wallet_balance':        str(get_wallet_balance(user)),
-            'todays_income':         str(get_todays_income(user)),
+            'today_expense':         str(get_todays_expense(user)),
             'rate' :  str(Rating.objects.filter(rated_to=user).aggregate(Avg('score'))['score__avg']),
         }, status=status.HTTP_200_OK)
     
@@ -45,8 +45,9 @@ def dashboard_fullfillment(request):
         return Response({
             'pending_order':  str(get_orderRequested_by_consumer(user)),
             'username': user.get_full_name_from_userModel(),
-            'todays_expense':  str(get_todays_expense(user)),
+            'today_expense':  str(get_todays_expense(user)),
             'wallet_balance':  str(get_wallet_balance(user_id)),
+            'rate' :  Rating.objects.filter(rated_to=user).aggregate(Avg('score'))['score__avg']
            # 'recent_accepted_orders': get_recent_accepted_orders(user)
         }, status=status.HTTP_200_OK)
 
@@ -268,7 +269,7 @@ def get_todays_expense(user):
 #                            refresh_wallet Start
 ##########################################################################################
 @api_view(['POST'])
-@permission_classes([HasValidTokenForUser])
+@permission_classes([AllowAny])
 def refresh_wallet(request):
     """Get all orders for products belonging to the authenticated farmer"""
     userid = request.headers.get('user-id')
@@ -276,12 +277,21 @@ def refresh_wallet(request):
     if userid is None:
         return Response({'error': 'Missing user-id header'}, status=status.HTTP_400_BAD_REQUEST)
     
-    balance = "20000.00"
-    b = "10000.00"
+    user = Users.objects.get(user_id=userid)
+    wallet = Wallet.objects.get(user_id=user)
+    response_data = {
+        'balance': str(wallet.balance),
+        'today_expense': get_todays_expense(user),
+    }
+    if user.profile_id.user_type in ['Farmer', 'VerifiedFarmer']:
+        response_data['today_income'] = get_todays_income(user)
+
+    
     return Response(
         {
-        'balance': balance,
-        'todays_income': b
+            'balance': response_data['balance'],
+            'today_expense': response_data['today_expense'],
+            'today_income': response_data.get('today_income', 0)
         },
         status=status.HTTP_200_OK)
 ##########################################################################################
